@@ -1531,7 +1531,7 @@
         .stat-card{ padding:16px 12px; border-radius:20px; min-width:0; }
         .stat-value{ font-size:clamp(17px,5.4vw,23px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .stat-label{ font-size:12px; margin-top:3px; }
-        @media (min-width:600px){ .stats-grid{ grid-template-columns:repeat(5,minmax(0,1fr)); } .stat-value{ font-size:clamp(15px,2.6vw,20px); } }
+        @media (min-width:600px){ .stats-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } .stat-value{ font-size:clamp(16px,2.8vw,21px); } }
 
         /* Sections + region tiles a touch tighter */
         .section{ border-radius:22px; padding:16px; margin-bottom:14px; }
@@ -1629,6 +1629,10 @@
                     <div class="stat-card">
                         <div class="stat-value" id="netProfit">£0</div>
                         <div class="stat-label">Net Profit</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="needOrdersTotal">0</div>
+                        <div class="stat-label">Need Orders</div>
                     </div>
                 </div>
 
@@ -1997,8 +2001,9 @@
                 remaining: a.remaining + m.summary.remaining,
                 cost: a.cost + m.summary.totalCost,
                 sales: a.sales + m.summary.sales,
-                profit: a.profit + m.summary.profit
-            }), { tickets:0, remaining:0, cost:0, sales:0, profit:0 });
+                profit: a.profit + m.summary.profit,
+                needOrders: a.needOrders + ((m.needList || []).length)
+            }), { tickets:0, remaining:0, cost:0, sales:0, profit:0, needOrders:0 });
 
             dashboardData = { regions, matches: allMatches, totals };
             try { localStorage.setItem('wc_snapshot', JSON.stringify(dashboardData)); } catch(e){}
@@ -2041,12 +2046,14 @@
             renderRegions();
         }
 
+        function fmtInt(n) { return (n || 0).toLocaleString('en-GB'); }
         function renderKPIs() {
             const t = dashboardData.totals;
-            document.getElementById('totalTickets').textContent = t.tickets || 0;
-            document.getElementById('remainingTickets').textContent = t.remaining || 0;
+            document.getElementById('totalTickets').textContent = fmtInt(t.tickets);
+            document.getElementById('remainingTickets').textContent = fmtInt(t.remaining);
             document.getElementById('totalCost').textContent = money0(t.cost);
             document.getElementById('totalSales').textContent = money0(t.sales);
+            document.getElementById('needOrdersTotal').textContent = fmtInt(t.needOrders);
             const p = document.getElementById('netProfit');
             p.textContent = signed0(t.profit || 0);
             p.className = 'stat-value ' + ((t.profit || 0) >= 0 ? 'profit-positive' : 'profit-negative');
@@ -2118,7 +2125,7 @@
                                         <div class="match-meta">
                                             ${m.matchNo?`<span class="match-stage-tag">M${m.matchNo}</span>`:''}
                                             ${m.city?`<span class="match-city">📍 ${m.city}</span>`:''}
-                                            ${need?`<span class="need-badge">🛒 ${need} order${need>1?'s':''}</span>`:''}
+                                            ${need?`<span class="need-badge">🎯 ${need} Need Order${need>1?'s':''}</span>`:''}
                                         </div>
                                     </div>
                                 </div>
