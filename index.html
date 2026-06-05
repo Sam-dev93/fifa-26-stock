@@ -26,44 +26,65 @@
 
         /* Filter / control bar */
         .filter-bar {
-            display:flex; flex-direction:column; gap:12px; margin-bottom:18px;
+            display:flex; flex-direction:column; gap:16px; margin-bottom:24px;
+            background:var(--bg-secondary); border:1px solid var(--border-primary);
+            border-radius:18px; padding:18px;
         }
         .search-box {
-            width:100%; padding:12px 16px; border-radius:14px;
-            border:1px solid var(--border-primary); background:var(--bg-secondary);
+            width:100%; padding:13px 16px; border-radius:12px;
+            border:1px solid var(--border-primary); background:var(--bg-tertiary);
             color:var(--text-primary); font-size:15px; outline:none;
             transition:border-color .2s, box-shadow .2s;
         }
         .search-box:focus { border-color:var(--accent-primary); box-shadow:0 0 0 3px var(--accent-green-bg); }
-        .chip-row { display:flex; flex-wrap:wrap; gap:8px; }
+        .filter-group { display:flex; flex-direction:column; gap:9px; }
+        .filter-group-label { font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; color:var(--text-tertiary); padding-left:2px; }
+        .chip-row { display:flex; flex-wrap:wrap; gap:9px; }
         .chip {
-            padding:8px 14px; border-radius:999px; cursor:pointer; user-select:none;
-            border:1px solid var(--border-primary); background:var(--bg-secondary);
+            padding:9px 16px; border-radius:999px; cursor:pointer; user-select:none;
+            border:1px solid var(--border-primary); background:var(--bg-tertiary);
             color:var(--text-secondary); font-size:13px; font-weight:600;
             transition:all .15s; white-space:nowrap;
         }
         .chip:hover { border-color:var(--accent-primary); color:var(--text-primary); }
-        .chip.active { background:var(--accent-primary); border-color:var(--accent-primary); color:#fff; }
+        .chip.active { background:var(--accent-primary); border-color:var(--accent-primary); color:#fff; box-shadow:0 2px 8px var(--accent-green-shadow); }
 
-        /* Region summary mini-bars */
-        .region-overview { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:18px; }
+        /* Region summary mini-bars — 2 per row, roomy */
+        .region-overview { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:16px; margin-bottom:8px; }
         .region-mini {
             background:var(--bg-secondary); border:1px solid var(--border-primary);
-            border-radius:14px; padding:14px; cursor:pointer; transition:transform .15s, border-color .15s;
+            border-radius:16px; padding:20px; cursor:pointer; transition:transform .15s, border-color .15s, box-shadow .15s;
         }
-        .region-mini:hover { transform:translateY(-2px); border-color:var(--accent-primary); }
-        .region-mini .rm-name { font-weight:700; font-size:14px; display:flex; align-items:center; gap:6px; margin-bottom:8px; }
-        .region-mini .rm-stat { font-size:12px; color:var(--text-secondary); display:flex; justify-content:space-between; margin-top:3px; }
-        .region-mini .rm-stat b { color:var(--text-primary); font-weight:600; }
+        .region-mini:hover { transform:translateY(-2px); border-color:var(--accent-primary); box-shadow:0 6px 18px var(--shadow-primary); }
+        .region-mini .rm-name { font-weight:700; font-size:16px; display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+        .region-mini .rm-stat { font-size:13px; color:var(--text-tertiary); display:flex; justify-content:space-between; gap:12px; margin-top:7px; }
+        .region-mini .rm-stat b { color:var(--text-primary); font-weight:700; text-align:right; white-space:nowrap; }
 
         /* Stage grouping inside a region */
-        .stage-group { margin-top:14px; }
+        .stage-group { margin-top:24px; }
+        .stage-group:first-child { margin-top:8px; }
         .stage-label {
             font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
-            color:var(--text-secondary); margin:8px 2px 8px; display:flex; align-items:center; gap:8px;
+            color:var(--text-secondary); margin:0 2px 16px; display:flex; align-items:center; gap:10px;
         }
         .stage-label::after { content:""; flex:1; height:1px; background:var(--border-primary); }
-        .stage-count { font-weight:600; letter-spacing:normal; text-transform:none; color:var(--text-secondary); opacity:.8; }
+        .stage-count { font-weight:600; letter-spacing:normal; text-transform:none; color:var(--text-tertiary); }
+
+        /* Match cards — clearly separated, profit-coloured edge */
+        .match-item.clickable-match {
+            background:var(--bg-secondary);
+            border:1px solid var(--border-primary);
+            border-left:4px solid var(--text-quaternary);
+            border-radius:16px;
+            padding:16px 18px;
+            margin-bottom:14px;
+            box-shadow:0 1px 3px var(--shadow-primary);
+        }
+        .match-item.clickable-match:last-child { margin-bottom:0; }
+        .match-item.clickable-match:hover { transform:translateY(-2px); box-shadow:0 8px 22px var(--shadow-primary); border-color:var(--accent-primary); border-left-color:var(--accent-primary); }
+        .match-item.profit-pos { border-left-color:var(--accent-primary); }
+        .match-item.profit-neg { border-left-color:var(--accent-red); }
+        .match-item .match-details { border-top-color:var(--border-secondary); margin-top:12px; padding-top:12px; }
 
         /* Match card teams + city line */
         .match-meta { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:2px; }
@@ -1447,8 +1468,14 @@
                 <div class="section">
                     <div class="filter-bar">
                         <input type="text" class="search-box" id="searchBox" placeholder="🔎 Search team, city or match number…" oninput="applyFilters()">
-                        <div class="chip-row" id="regionChips"></div>
-                        <div class="chip-row" id="stageChips"></div>
+                        <div class="filter-group">
+                            <div class="filter-group-label">Region</div>
+                            <div class="chip-row" id="regionChips"></div>
+                        </div>
+                        <div class="filter-group">
+                            <div class="filter-group-label">Stage</div>
+                            <div class="chip-row" id="stageChips"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -1862,7 +1889,7 @@
                     const cards = list.map(m => {
                         const s = m.summary, sold = s.tickets - s.remaining;
                         return `
-                        <div class="match-item clickable-match" onclick="openMatchPopup('${m.id}')">
+                        <div class="match-item clickable-match ${s.profit>=0?'profit-pos':'profit-neg'}" onclick="openMatchPopup('${m.id}')">
                             <div class="match-header">
                                 <div class="match-info">
                                     <div class="match-details-info">
