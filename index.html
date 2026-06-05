@@ -1511,6 +1511,74 @@
         @media (min-width:1024px){
             .match-popup{ width:100%; max-width:640px; }
         }
+
+        /* ===== Density + fit pass ===== */
+        .container{ max-width:560px; }
+        .top-spacer{ height:6px; }
+        .bottom-spacer{ height:28px; }
+        .scrollable-content{ padding-top:8px; }
+
+        /* Compact header */
+        .header{ padding:6px 6px 2px; }
+        .header h1{ font-size:23px; letter-spacing:-0.5px; }
+        .header p{ font-size:13px; margin-top:0; }
+        .theme-toggle{ width:40px; height:40px; top:0; }
+        @media (min-width:768px){ .header h1{ font-size:26px; } }
+        @media (min-width:1024px){ .header h1{ font-size:28px; } }
+
+        /* KPI cards — never overflow, shrink the big numbers responsively */
+        .stats-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+        .stat-card{ padding:16px 12px; border-radius:20px; min-width:0; }
+        .stat-value{ font-size:clamp(17px,5.4vw,23px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .stat-label{ font-size:12px; margin-top:3px; }
+        @media (min-width:600px){ .stats-grid{ grid-template-columns:repeat(5,minmax(0,1fr)); } .stat-value{ font-size:clamp(15px,2.6vw,20px); } }
+
+        /* Sections + region tiles a touch tighter */
+        .section{ border-radius:22px; padding:16px; margin-bottom:14px; }
+        .section-title{ font-size:16px; margin-bottom:12px; }
+        .region-overview{ gap:10px; }
+        .region-mini{ padding:15px; border-radius:18px; }
+        .region-mini .rm-name{ font-size:15px; margin-bottom:10px; }
+        .region-mini .rm-stat{ font-size:12px; margin-top:5px; }
+
+        /* Filter card tighter */
+        .filter-bar{ border-radius:22px; padding:16px; gap:14px; }
+        .chip{ padding:8px 14px; font-size:13px; }
+
+        /* Match cards — denser, profit never wraps */
+        .match-item.clickable-match{ padding:13px 15px; margin-bottom:11px; border-radius:16px; }
+        .match-details-info h3{ font-size:16px; }
+        .match-meta{ margin-top:3px; }
+        .tickets-count{ font-size:17px; }
+        .tickets-label{ font-size:12px; }
+        .match-item .match-details{ margin-top:10px; padding-top:10px; gap:6px; }
+        .detail-item{ min-width:0; }
+        .detail-label{ font-size:11px; margin-bottom:2px; }
+        .detail-value{ font-size:13px; white-space:nowrap; }
+
+        /* Popup stat grid — compact, 2 per row, fits */
+        .match-stats-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:18px; }
+        .match-stat-card{ padding:13px 12px; border-radius:16px; min-width:0; }
+        .match-stat-value{ font-size:clamp(15px,4.6vw,19px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .match-stat-label{ font-size:11px; margin-top:2px; }
+        @media (min-width:520px){ .match-stats-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
+
+        /* Sub-text (seat code / order id) */
+        .cat-table .sub, .tickets-table .sub{ opacity:.55; font-size:11px; font-weight:400; }
+        .orders-table th:nth-child(2), .orders-table td:nth-child(2),
+        .orders-table th:nth-child(3), .orders-table td:nth-child(3){ width:74px; }
+
+        /* Collapsible seats */
+        .seats-toggle{
+            width:100%; margin-top:6px; padding:13px; border-radius:var(--radius-pill);
+            background:var(--bg-tertiary); border:1px solid var(--border-primary);
+            color:var(--text-secondary); font-weight:600; font-size:14px; cursor:pointer;
+            display:flex; align-items:center; justify-content:center; gap:8px;
+        }
+        .seats-toggle .chev{ transition:transform .2s; }
+        .seats-toggle.open .chev{ transform:rotate(180deg); }
+        .seats-wrap{ display:none; margin-top:10px; }
+        .seats-wrap.open{ display:block; }
     </style>
 </head>
 <body>
@@ -1729,10 +1797,13 @@
         }
 
         /* ---- Formatting helpers ---- */
-        function formatCurrency(amount) {
-            return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 0 }).format(Math.abs(amount || 0));
+        function fmtMoney(amount, dp) {
+            return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: dp, maximumFractionDigits: dp }).format(Math.abs(amount || 0));
         }
+        function formatCurrency(amount) { return fmtMoney(amount, 2); }   // precise (sheet/popup)
+        function money0(amount) { return fmtMoney(amount, 0); }            // whole pounds (cards/KPIs)
         function signedCurrency(v) { return (v >= 0 ? '+' : '-') + formatCurrency(v); }
+        function signed0(v) { return (v >= 0 ? '+' : '-') + money0(v); }
         function num(v) { if (typeof v === 'number') return v; if (v == null || v === '') return 0; const n = parseFloat(String(v).replace(/[£,\s]/g, '')); return isNaN(n) ? 0 : n; }
 
         const UPPER = ['FC','AFC','USA','USNT','UK','US','NY','LA','SF','NZ','UAE','VAR','UEFA','FIFA','RO32','RO16','QTR','SEMI','FINAL'];
@@ -1796,32 +1867,51 @@
                 const bought = num(cell(values, r, 1)), rem = num(cell(values, r, 2)), pl = num(cell(values, r, 3));
                 if (bought || rem || pl) cats.push({ name: nm, bought, remaining: rem, pl });
             }
-            // Ticket rows
+            // Ticket rows — block/row/area only appear on the first seat of a group, so carry them down
             const tickets = [];
-            let section = '';
+            let section = '', cArea = '', cBlock = '', cRow = '', groupFv = null;
             for (let r = 1; r < values.length; r++) {
                 const q = String(cell(values, r, 16)).trim();
                 const fv = num(cell(values, r, 8));
-                if (q && SECTION_LABELS.includes(q.toUpperCase()) && fv === 0) { section = q; continue; }
+                if (q && SECTION_LABELS.includes(q.toUpperCase()) && fv === 0) { section = q; cArea = ''; cBlock = ''; cRow = ''; groupFv = null; continue; }
                 if (fv <= 0) continue;
+                const aRaw = String(cell(values, r, 12)).trim(); if (aRaw) cArea = aRaw;
+                const bRaw = String(cell(values, r, 13)).trim();
+                const rRaw = String(cell(values, r, 14)).trim();
+                if (bRaw) { cBlock = bRaw; cRow = rRaw; groupFv = fv; }       // new seated group
+                else if (fv !== groupFv) { cBlock = ''; cRow = ''; groupFv = fv; } // new price group, unseated
+                const seat = String(cell(values, r, 15)).trim();
                 const price = num(cell(values, r, 18));
-                const listed = String(cell(values, r, 17)).trim();
+                const listedRaw = String(cell(values, r, 17)).trim();
                 let status = String(cell(values, r, 26)).trim();
-                if (!status) status = price > 0 ? 'Sold' : (listed ? 'Listed' : 'Available');
+                if (!status) status = price > 0 ? 'Sold' : (listedRaw ? 'Listed' : 'Available');
                 tickets.push({
-                    cat: String(cell(values, r, 12)).trim() || section,
-                    block: String(cell(values, r, 13)).trim(),
-                    row: String(cell(values, r, 14)).trim(),
-                    seat: String(cell(values, r, 15)).trim(),
-                    source: String(cell(values, r, 11)).trim(),
-                    name: String(cell(values, r, 10)).trim(),
+                    cat: cArea || section,
+                    block: cBlock, row: cRow, seat,
+                    listedOn: listedRaw,
                     fv, price, net: num(cell(values, r, 25)),
-                    orderNo: String(cell(values, r, 19)).trim(),
                     status
                 });
             }
+            // "Need" orders table (cols A-D): Order ID, Cat, Qty, £ Each
+            const needList = [];
+            let h = -1;
+            for (let r = 0; r < values.length; r++) { if (String(cell(values, r, 0)).trim().toLowerCase() === 'order id') { h = r; break; } }
+            if (h >= 0) {
+                for (let r = h + 1; r < Math.min(values.length, h + 22); r++) {
+                    const a = String(cell(values, r, 0)).trim();
+                    if (/^(selling commission|buying commission|name)$/i.test(a)) break;
+                    const catN = String(cell(values, r, 1)).trim();
+                    const qtyRaw = cell(values, r, 2);
+                    const eachRaw = cell(values, r, 3);
+                    const qty = num(qtyRaw);
+                    const hasEach = eachRaw !== '' && eachRaw != null;
+                    if (!catN && qty <= 0 && !hasEach) continue;           // blank spacer row
+                    needList.push({ orderId: a, cat: catN, qty: qty || qtyRaw, each: num(eachRaw) });
+                }
+            }
             const meta = parseMatchTitle(title);
-            return { region: region.name, regionEmoji: region.emoji, tabTitle: title, ...meta, summary, cats, tickets };
+            return { region: region.name, regionEmoji: region.emoji, tabTitle: title, ...meta, summary, cats, tickets, needList };
         }
 
         /* ---- Fetch ---- */
@@ -1942,10 +2032,10 @@
             const t = dashboardData.totals;
             document.getElementById('totalTickets').textContent = t.tickets || 0;
             document.getElementById('remainingTickets').textContent = t.remaining || 0;
-            document.getElementById('totalCost').textContent = formatCurrency(t.cost);
-            document.getElementById('totalSales').textContent = formatCurrency(t.sales);
+            document.getElementById('totalCost').textContent = money0(t.cost);
+            document.getElementById('totalSales').textContent = money0(t.sales);
             const p = document.getElementById('netProfit');
-            p.textContent = signedCurrency(t.profit || 0);
+            p.textContent = signed0(t.profit || 0);
             p.className = 'stat-value ' + ((t.profit || 0) >= 0 ? 'profit-positive' : 'profit-negative');
         }
 
@@ -1956,8 +2046,8 @@
                     <div class="rm-name">${r.emoji} ${r.name}</div>
                     <div class="rm-stat"><span>Matches</span><b>${r.matchCount}</b></div>
                     <div class="rm-stat"><span>Tickets</span><b>${r.totals.tickets} (${r.totals.remaining} left)</b></div>
-                    <div class="rm-stat"><span>Sales</span><b>${formatCurrency(r.totals.sales)}</b></div>
-                    <div class="rm-stat"><span>Profit</span><b class="${r.totals.profit>=0?'profit-positive':'profit-negative'}">${signedCurrency(r.totals.profit)}</b></div>
+                    <div class="rm-stat"><span>Sales</span><b>${money0(r.totals.sales)}</b></div>
+                    <div class="rm-stat"><span>Profit</span><b class="${r.totals.profit>=0?'profit-positive':'profit-negative'}">${signed0(r.totals.profit)}</b></div>
                 </div>`).join('');
         }
 
@@ -2018,9 +2108,9 @@
                             </div>
                             <div class="match-details">
                                 <div class="detail-item"><div class="detail-label">Sold</div><div class="detail-value">${sold}</div></div>
-                                <div class="detail-item"><div class="detail-label">Cost</div><div class="detail-value">${formatCurrency(s.totalCost)}</div></div>
-                                <div class="detail-item"><div class="detail-label">Sales</div><div class="detail-value">${formatCurrency(s.sales)}</div></div>
-                                <div class="detail-item"><div class="detail-label">Profit</div><div class="detail-value ${s.profit>=0?'profit-positive':'profit-negative'}">${signedCurrency(s.profit)}</div></div>
+                                <div class="detail-item"><div class="detail-label">Cost</div><div class="detail-value">${money0(s.totalCost)}</div></div>
+                                <div class="detail-item"><div class="detail-label">Sales</div><div class="detail-value">${money0(s.sales)}</div></div>
+                                <div class="detail-item"><div class="detail-label">Profit</div><div class="detail-value ${s.profit>=0?'profit-positive':'profit-negative'}">${signed0(s.profit)}</div></div>
                             </div>
                         </div>`;
                     }).join('');
@@ -2068,14 +2158,26 @@
                     <div class="match-stat-card"><div class="match-stat-value">${s.tickets}</div><div class="match-stat-label">Tickets</div></div>
                     <div class="match-stat-card"><div class="match-stat-value">${sold}</div><div class="match-stat-label">Sold</div></div>
                     <div class="match-stat-card"><div class="match-stat-value">${s.remaining}</div><div class="match-stat-label">Remaining</div></div>
-                    <div class="match-stat-card"><div class="match-stat-value ${s.profit>=0?'profit-positive':'profit-negative'}">${signedCurrency(s.profit)}</div><div class="match-stat-label">Profit</div></div>
-                </div>
-                <div class="match-stats-grid" style="margin-top:8px;">
-                    <div class="match-stat-card"><div class="match-stat-value">${formatCurrency(s.faceValue)}</div><div class="match-stat-label">Face Value</div></div>
-                    <div class="match-stat-card"><div class="match-stat-value">${formatCurrency(s.totalCost)}</div><div class="match-stat-label">Total Cost</div></div>
-                    <div class="match-stat-card"><div class="match-stat-value">${formatCurrency(s.sales)}</div><div class="match-stat-label">Sales</div></div>
-                    <div class="match-stat-card"><div class="match-stat-value">${s.needOrders||0}</div><div class="match-stat-label">Need Orders</div></div>
+                    <div class="match-stat-card"><div class="match-stat-value ${s.profit>=0?'profit-positive':'profit-negative'}">${signed0(s.profit)}</div><div class="match-stat-label">Profit</div></div>
+                    <div class="match-stat-card"><div class="match-stat-value">${money0(s.totalCost)}</div><div class="match-stat-label">Cost</div></div>
+                    <div class="match-stat-card"><div class="match-stat-value">${money0(s.sales)}</div><div class="match-stat-label">Sales</div></div>
                 </div>`;
+
+            // Orders Needed (the "Need" table)
+            const orders = m.needList || [];
+            const totalQty = orders.reduce((a, o) => a + (typeof o.qty === 'number' ? o.qty : 0), 0);
+            const orderRows = orders.length ? orders.map(o => `
+                <tr>
+                    <td style="text-align:left;">${o.cat || '—'}${o.orderId?`<br><span class="sub">#${o.orderId}</span>`:''}</td>
+                    <td>${o.qty || '—'}</td>
+                    <td>${o.each?formatCurrency(o.each):'—'}</td>
+                </tr>`).join('') : `<tr><td colspan="3" style="text-align:center;opacity:.6;">No outstanding orders 🎉</td></tr>`;
+            const ordersTable = `
+                <div class="popup-section-title">Orders needed${orders.length?` · ${orders.length} order${orders.length>1?'s':''}, ${totalQty} ticket${totalQty===1?'':'s'}`:''}</div>
+                <table class="cat-table orders-table">
+                    <thead><tr><th>Category</th><th>Qty</th><th>£ each</th></tr></thead>
+                    <tbody>${orderRows}</tbody>
+                </table>`;
 
             const catRows = m.cats.length ? m.cats.map(c => `
                 <tr class="${(c.bought||c.remaining)?'':'zero-row'}">
@@ -2093,21 +2195,25 @@
                 const seat = [t.block, t.row, t.seat].filter(Boolean).join('-');
                 const pillClass = t.status.toLowerCase().includes('sold') ? 'sold' : (t.status.toLowerCase().includes('list') ? 'listed' : 'available');
                 return `<tr>
-                    <td style="text-align:left;">${t.cat || '—'}${seat?`<br><span style="opacity:.6;font-size:11px;">${seat}</span>`:''}</td>
+                    <td style="text-align:left;">${t.cat || '—'}${seat?`<br><span class="sub">${seat}</span>`:''}</td>
                     <td>${formatCurrency(t.fv)}</td>
                     <td>${t.price?formatCurrency(t.price):'—'}</td>
                     <td class="${t.net>=0?'profit-positive':'profit-negative'}">${t.net?signedCurrency(t.net):'—'}</td>
                     <td><span class="pill ${pillClass}">${t.status}</span></td>
                 </tr>`;
             }).join('') : `<tr><td colspan="5" style="text-align:center;opacity:.6;">No individual tickets listed</td></tr>`;
-            const ticketTable = `
-                <div class="popup-section-title">Tickets (${m.tickets.length})</div>
-                <table class="tickets-table">
-                    <thead><tr><th>Cat / Seat</th><th>FV</th><th>Price</th><th>Net</th><th>Status</th></tr></thead>
-                    <tbody>${ticketRows}</tbody>
-                </table>`;
+            const ticketTable = m.tickets.length ? `
+                <button class="seats-toggle" onclick="this.nextElementSibling.classList.toggle('open'); this.classList.toggle('open');">
+                    Show all ${m.tickets.length} seats <span class="chev">▾</span>
+                </button>
+                <div class="seats-wrap">
+                    <table class="tickets-table">
+                        <thead><tr><th>Cat / Seat</th><th>FV</th><th>Price</th><th>Net</th><th>Status</th></tr></thead>
+                        <tbody>${ticketRows}</tbody>
+                    </table>
+                </div>` : '';
 
-            content.innerHTML = statPills + catTable + ticketTable;
+            content.innerHTML = statPills + ordersTable + catTable + ticketTable;
             document.getElementById('matchPopupOverlay').classList.add('show');
         }
         function closeMatchPopup(e) { if (e && e.target && e.target.id !== 'matchPopupOverlay') return; document.getElementById('matchPopupOverlay').classList.remove('show'); }
