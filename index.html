@@ -1,0 +1,2119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="World Cup Tickets">
+    <meta name="theme-color" content="#181818">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.json">
+    <title>World Cup 2026 - Ticket Dashboard</title>
+
+    <meta name="description" content="World Cup 2026 ticket management dashboard">
+    <meta name="application-name" content="World Cup Tickets">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="apple-touch-icon" sizes="180x180" href="icon-192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="icon-192.png">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        /* ===== World Cup additions ===== */
+        .match-popup-overlay.show { display:flex; }
+        .subtitle-row { display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap; }
+
+        /* Filter / control bar */
+        .filter-bar {
+            display:flex; flex-direction:column; gap:12px; margin-bottom:18px;
+        }
+        .search-box {
+            width:100%; padding:12px 16px; border-radius:14px;
+            border:1px solid var(--border-primary); background:var(--bg-secondary);
+            color:var(--text-primary); font-size:15px; outline:none;
+            transition:border-color .2s, box-shadow .2s;
+        }
+        .search-box:focus { border-color:var(--accent-primary); box-shadow:0 0 0 3px var(--accent-green-bg); }
+        .chip-row { display:flex; flex-wrap:wrap; gap:8px; }
+        .chip {
+            padding:8px 14px; border-radius:999px; cursor:pointer; user-select:none;
+            border:1px solid var(--border-primary); background:var(--bg-secondary);
+            color:var(--text-secondary); font-size:13px; font-weight:600;
+            transition:all .15s; white-space:nowrap;
+        }
+        .chip:hover { border-color:var(--accent-primary); color:var(--text-primary); }
+        .chip.active { background:var(--accent-primary); border-color:var(--accent-primary); color:#fff; }
+
+        /* Region summary mini-bars */
+        .region-overview { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:18px; }
+        .region-mini {
+            background:var(--bg-secondary); border:1px solid var(--border-primary);
+            border-radius:14px; padding:14px; cursor:pointer; transition:transform .15s, border-color .15s;
+        }
+        .region-mini:hover { transform:translateY(-2px); border-color:var(--accent-primary); }
+        .region-mini .rm-name { font-weight:700; font-size:14px; display:flex; align-items:center; gap:6px; margin-bottom:8px; }
+        .region-mini .rm-stat { font-size:12px; color:var(--text-secondary); display:flex; justify-content:space-between; margin-top:3px; }
+        .region-mini .rm-stat b { color:var(--text-primary); font-weight:600; }
+
+        /* Stage grouping inside a region */
+        .stage-group { margin-top:14px; }
+        .stage-label {
+            font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+            color:var(--text-secondary); margin:8px 2px 8px; display:flex; align-items:center; gap:8px;
+        }
+        .stage-label::after { content:""; flex:1; height:1px; background:var(--border-primary); }
+        .stage-count { font-weight:600; letter-spacing:normal; text-transform:none; color:var(--text-secondary); opacity:.8; }
+
+        /* Match card teams + city line */
+        .match-meta { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:2px; }
+        .match-city { font-size:12px; color:var(--text-secondary); display:inline-flex; align-items:center; gap:4px; }
+        .match-stage-tag {
+            font-size:10px; font-weight:700; padding:2px 8px; border-radius:999px;
+            background:var(--accent-green-bg); color:var(--accent-primary);
+        }
+
+        /* Category breakdown table inside popup */
+        .cat-table { width:100%; border-collapse:collapse; margin:6px 0 18px; font-size:13px; }
+        .cat-table th, .cat-table td { padding:8px 10px; text-align:right; border-bottom:1px solid var(--border-primary); }
+        .cat-table th { color:var(--text-secondary); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+        .cat-table td:first-child, .cat-table th:first-child { text-align:left; }
+        .cat-table tr:last-child td { border-bottom:none; font-weight:700; }
+        .cat-table .zero-row { opacity:.4; }
+
+        .popup-section-title { font-size:13px; font-weight:700; color:var(--text-primary); margin:4px 0 6px; }
+
+        /* Status pills */
+        .pill { font-size:11px; font-weight:700; padding:2px 9px; border-radius:999px; white-space:nowrap; }
+        .pill.sold { background:rgba(34,197,94,.15); color:#16a34a; }
+        .pill.listed { background:rgba(234,179,8,.18); color:#ca8a04; }
+        .pill.available { background:rgba(148,163,184,.18); color:#64748b; }
+        [data-theme="dark"] .pill.available { color:#94a3b8; }
+
+        /* Config modal */
+        .config-grid { display:flex; flex-direction:column; gap:14px; }
+        .config-field label { display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:5px; }
+        .config-field input {
+            width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border-primary);
+            background:var(--bg-secondary, var(--bg-secondary)); color:var(--text-primary); font-size:13px; outline:none;
+            font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+        }
+        .config-field input:focus { border-color:var(--accent-primary); }
+        .config-save-btn {
+            width:100%; padding:13px; border:none; border-radius:12px; background:var(--accent-primary);
+            color:#fff; font-size:15px; font-weight:700; cursor:pointer; margin-top:6px;
+        }
+        .config-hint { font-size:12px; color:var(--text-secondary); line-height:1.5; }
+        .gear-btn {
+            position:absolute; top:0; left:0; background:none; border:none; font-size:20px;
+            cursor:pointer; color:var(--text-secondary); padding:6px; line-height:1;
+        }
+        .needs-config { text-align:center; padding:40px 20px; }
+        .needs-config h2 { margin-bottom:10px; }
+        .needs-config p { color:var(--text-secondary); margin-bottom:20px; }
+    </style>
+    <style>
+        :root {
+            /* Dark mode colors (default) */
+            --bg-primary: #181818;
+            --bg-secondary: #1F1F1F;
+            --bg-tertiary: #2A2A2A;
+            --bg-quaternary: #3A3A3A;
+            --border-primary: #2E2E2E;
+            --border-secondary: #3A3A3A;
+            --text-primary: #F5F5F5;
+            --text-secondary: #E6E6E6;
+            --text-tertiary: #B8B8B8;
+            --text-quaternary: #8E8E93;
+            --accent-primary: #10A37F;
+            --accent-secondary: #0D8B6F;
+            --accent-blue: #5A9FD4;
+            --accent-red: #E85A5A;
+            --shadow-primary: rgba(0, 0, 0, 0.3);
+            --shadow-secondary: rgba(0, 0, 0, 0.5);
+            --accent-green-bg: rgba(16, 163, 127, 0.1);
+            --accent-green-border: rgba(16, 163, 127, 0.2);
+            --accent-green-shadow: rgba(16, 163, 127, 0.25);
+        }
+
+        [data-theme="light"] {
+            /* Light mode colors */
+            --bg-primary: #F2F2F7;
+            --bg-secondary: #FFFFFF;
+            --bg-tertiary: #F1F3F4;
+            --bg-quaternary: #E8EAED;
+            --border-primary: #E1E3E6;
+            --border-secondary: #D1D5DB;
+            --text-primary: #1A1A1A;
+            --text-secondary: #333333;
+            --text-tertiary: #666666;
+            --text-quaternary: #9CA3AF;
+            --accent-primary: #10A37F;
+            --accent-secondary: #0D8B6F;
+            --accent-blue: #1E5A96;
+            --accent-red: #DC2626;
+            --shadow-primary: rgba(0, 0, 0, 0.1);
+            --shadow-secondary: rgba(0, 0, 0, 0.15);
+            --accent-green-bg: rgba(16, 163, 127, 0.08);
+            --accent-green-border: rgba(16, 163, 127, 0.15);
+            --accent-green-shadow: rgba(16, 163, 127, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+            line-height: 1.47;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            overscroll-behavior: none;
+            -webkit-overflow-scrolling: touch;
+            transition: background-color 0.3s ease, color 0.3s ease;
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            height: 100vh;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding: 0 16px;
+        }
+        
+        .top-spacer {
+            height: 70px;
+            flex-shrink: 0;
+            background: var(--bg-primary);
+        }
+        
+        .bottom-spacer {
+            height: 50px;
+            flex-shrink: 0;
+            background: var(--bg-primary);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 0;
+            padding: 10px 0;
+            position: relative;
+            flex-shrink: 0;
+            background: var(--bg-primary);
+        }
+        
+        .sticky-header {
+            position: sticky;
+            top: 0;
+            background: var(--bg-primary);
+            z-index: 100;
+            height: 8px;
+            border-bottom: 1px solid var(--border-primary);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .scrollable-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            padding-top: 20px;
+            padding-bottom: 0;
+        }
+        
+        .header h1 {
+            font-size: 34px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+            letter-spacing: -0.41px;
+        }
+        
+        .header p {
+            font-size: 17px;
+            color: var(--text-tertiary);
+            font-weight: 400;
+        }
+
+        .theme-toggle {
+            position: absolute;
+            top: 10px;
+            right: 0;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-secondary);
+            border-radius: 20px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 18px;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        .theme-toggle:hover {
+            background: var(--bg-quaternary);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--shadow-primary);
+        }
+
+        .theme-toggle:active {
+            transform: translateY(0);
+        }
+
+        .theme-icon {
+            transition: all 0.3s ease;
+        }
+
+        [data-theme="light"] .theme-icon.moon {
+            display: none;
+        }
+
+        [data-theme="light"] .theme-icon.sun {
+            display: block;
+        }
+
+        [data-theme="dark"] .theme-icon.sun {
+            display: none;
+        }
+
+        [data-theme="dark"] .theme-icon.moon {
+            display: block;
+        }
+
+        body:not([data-theme]) .theme-icon.sun {
+            display: none;
+        }
+
+        body:not([data-theme]) .theme-icon.moon {
+            display: block;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .stat-card {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 16px 14px;
+            box-shadow: 0 2px 8px var(--shadow-primary);
+            border: 1px solid var(--border-primary);
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            line-height: 1.2;
+            letter-spacing: -0.34px;
+            color: var(--text-primary);
+        }
+        
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-tertiary);
+            font-weight: 400;
+            letter-spacing: -0.08px;
+        }
+        
+        .stat-card.available-tickets .stat-value {
+            color: var(--accent-blue);
+        }
+        
+        .profit-negative {
+            color: var(--accent-red);
+        }
+        
+        .profit-positive {
+            color: var(--accent-primary);
+        }
+        
+        .section {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px var(--shadow-primary);
+            border: 1px solid var(--border-primary);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            padding: 16px 20px 8px 20px;
+            color: var(--text-primary);
+            letter-spacing: -0.24px;
+            text-align: center;
+        }
+        
+        .period-selector {
+            display: flex;
+            justify-content: center;
+            padding: 0 20px 16px 20px;
+            border-bottom: 1px solid var(--border-primary);
+        }
+        
+        .period-control {
+            display: flex;
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 4px;
+            border: 1px solid var(--border-secondary);
+        }
+        
+        .period-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-tertiary);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            letter-spacing: -0.24px;
+            min-width: 44px;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        
+        .period-btn.active {
+            background: var(--accent-primary);
+            color: #ffffff;
+            box-shadow: 0 2px 8px var(--accent-green-shadow);
+        }
+        
+        .period-btn:hover:not(.active) {
+            background: var(--bg-quaternary);
+            color: var(--text-secondary);
+        }
+        
+        .period-btn:active {
+            transform: scale(0.98);
+        }
+        
+        .match-item {
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border-primary);
+            background: var(--bg-secondary);
+            transition: all 0.3s ease;
+        }
+        
+        .match-item:last-child {
+            border-bottom: none;
+        }
+        
+        .match-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 6px;
+        }
+        
+        .match-details-info h3 {
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.29;
+            letter-spacing: -0.41px;
+            margin-bottom: 2px;
+        }
+        
+        .match-date {
+            font-size: 15px;
+            color: var(--text-tertiary);
+            font-weight: 400;
+            letter-spacing: -0.24px;
+        }
+        
+        .tickets-status {
+            text-align: right;
+            flex-shrink: 0;
+            margin-left: 16px;
+        }
+        
+        .tickets-count {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent-blue);
+            line-height: 1.2;
+            letter-spacing: -0.24px;
+        }
+        
+        .tickets-label {
+            font-size: 13px;
+            color: var(--text-tertiary);
+            font-weight: 400;
+            letter-spacing: -0.08px;
+        }
+        
+        .match-details {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border-primary);
+        }
+        
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+        }
+        
+        .detail-label {
+            color: var(--text-tertiary);
+            font-size: 12px;
+            font-weight: 400;
+            margin-bottom: 4px;
+            letter-spacing: -0.06px;
+        }
+        
+        .detail-value {
+            font-weight: 600;
+            font-size: 15px;
+            letter-spacing: -0.24px;
+            color: var(--text-secondary);
+        }
+        
+        .detail-value.profit-positive {
+            color: var(--accent-primary);
+        }
+        
+        .detail-value.profit-negative {
+            color: var(--accent-red);
+        }
+        
+        .refresh-btn {
+            background: var(--accent-primary);
+            border: none;
+            color: #ffffff;
+            padding: 16px 24px;
+            border-radius: 14px;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin: 16px 0 24px 0;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 12px var(--accent-green-shadow);
+            letter-spacing: -0.41px;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            flex-shrink: 0;
+        }
+        
+        .refresh-btn:hover {
+            background: var(--accent-secondary);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px var(--accent-green-shadow);
+        }
+        
+        .refresh-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 8px var(--accent-green-shadow);
+        }
+        
+        .refresh-btn:disabled {
+            background: var(--bg-quaternary);
+            transform: none;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+        
+        .pdf-export-btn {
+            background: linear-gradient(135deg, #10A37F, #0D7A5F);
+            border: none;
+            color: #ffffff;
+            padding: 16px 24px;
+            border-radius: 14px;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin: 24px 0 16px 0;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 12px var(--accent-green-shadow);
+            letter-spacing: -0.41px;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            flex-shrink: 0;
+        }
+        
+        .pdf-export-btn:hover {
+            background: linear-gradient(135deg, #0D8B6F, #0A7A5F);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px var(--accent-green-shadow);
+        }
+        
+        .pdf-export-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 8px var(--accent-green-shadow);
+        }
+        
+        .team-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-primary);
+        }
+        
+        .team-name {
+            font-size: 20px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-primary);
+            letter-spacing: -0.24px;
+        }
+        
+        .team-emoji {
+            width: 32px;
+            height: 32px;
+            background: var(--bg-tertiary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            border: 1px solid var(--border-secondary);
+            flex-shrink: 0;
+        }
+        
+        .team-summary {
+            text-align: right;
+            font-size: 13px;
+            line-height: 1.38;
+        }
+        
+        .team-tickets {
+            font-weight: 600;
+            color: var(--accent-blue);
+            margin-bottom: 2px;
+            letter-spacing: -0.08px;
+        }
+        
+        .team-spent {
+            color: var(--text-tertiary);
+            margin-bottom: 2px;
+            letter-spacing: -0.08px;
+        }
+        
+        .team-profit {
+            font-weight: 700;
+            font-size: 15px;
+            letter-spacing: -0.24px;
+        }
+        
+        .team-profit.profit-positive {
+            color: var(--accent-primary);
+        }
+        
+        .team-profit.profit-negative {
+            color: var(--accent-red);
+        }
+        
+        .expand-btn {
+            background: var(--bg-tertiary);
+            border: none;
+            color: var(--accent-primary);
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 12px 20px;
+            transition: all 0.2s ease;
+            letter-spacing: -0.41px;
+            border: 1px solid var(--border-secondary);
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        
+        .expand-btn.hide-matches {
+            color: var(--accent-red);
+        }
+        
+        .expand-btn:hover {
+            background: var(--bg-quaternary);
+            transform: translateY(-1px);
+        }
+        
+        .expand-btn:active {
+            transform: translateY(0);
+            background: var(--bg-quaternary);
+        }
+        
+        .team-details.collapsed {
+            display: none;
+        }
+        
+        .loading {
+            text-align: center;
+            color: var(--text-tertiary);
+            font-size: 17px;
+            margin: 20px 0;
+            font-weight: 400;
+        }
+        
+        .loading-progress {
+            text-align: center;
+            color: var(--accent-primary);
+            font-size: 15px;
+            margin: 10px 0;
+            font-weight: 500;
+        }
+        
+        .progress-container {
+            width: 100%;
+            max-width: 300px;
+            margin: 16px auto;
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+            overflow: hidden;
+            height: 8px;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 10px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        
+        .progress-text {
+            text-align: center;
+            color: var(--accent-primary);
+            font-size: 15px;
+            margin: 8px 0;
+            font-weight: 500;
+        }
+        
+        .success-message {
+            text-align: center;
+            color: var(--accent-primary);
+            font-size: 15px;
+            font-weight: 500;
+            margin: 16px 0 24px 0;
+            padding: 12px;
+            background: var(--accent-green-bg);
+            border-radius: 12px;
+            border: 1px solid var(--accent-green-border);
+        }
+
+        .error-message {
+            text-align: center;
+            color: var(--accent-red);
+            font-size: 15px;
+            font-weight: 500;
+            margin: 16px 0 24px 0;
+            padding: 12px;
+            background: rgba(232, 90, 90, 0.1);
+            border-radius: 12px;
+            border: 1px solid rgba(232, 90, 90, 0.2);
+        }
+
+        .persistent-message {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .persistent-message::after {
+            content: '×';
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            font-size: 18px;
+            color: inherit;
+            opacity: 0.7;
+        }
+
+        .persistent-message:hover::after {
+            opacity: 1;
+        }
+        
+        .empty-state {
+            text-align: center;
+            color: var(--text-tertiary);
+            padding: 40px 20px;
+            font-size: 17px;
+            font-weight: 400;
+        }
+        
+        .separator {
+            height: 1px;
+            background: repeating-linear-gradient(
+                to right,
+                var(--border-primary) 0px,
+                var(--border-primary) 8px,
+                transparent 8px,
+                transparent 16px
+            );
+            margin: 16px 0 0 0;
+        }
+        
+        #teamsContainer .section:last-child {
+            margin-bottom: 0;
+        }
+        
+        #teamsContainer:last-child {
+            margin-bottom: 0;
+        }
+        
+        .scrollable-content > *:last-child {
+            margin-bottom: 0 !important;
+        }
+        
+        .section:last-child {
+            margin-bottom: 0 !important;
+        }
+        
+        .team-details:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        
+        .match-popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .match-popup {
+            background: var(--bg-secondary);
+            border-radius: 20px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+            box-shadow: 0 20px 60px var(--shadow-secondary);
+            border: 1px solid var(--border-primary);
+            margin: auto;
+        }
+        
+        .match-popup-header {
+            padding: 20px 20px 16px 20px;
+            border-bottom: 1px solid var(--border-primary);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            background: var(--bg-secondary);
+            border-radius: 20px 20px 0 0;
+        }
+        
+        .match-popup-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.29px;
+            margin-bottom: 4px;
+        }
+        
+        .match-popup-date {
+            font-size: 17px;
+            color: var(--text-tertiary);
+            font-weight: 400;
+        }
+        
+        .close-btn {
+            background: var(--bg-tertiary);
+            border: none;
+            border-radius: 20px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+            margin-left: 16px;
+            border: 1px solid var(--border-secondary);
+        }
+        
+        .close-btn:hover {
+            background: var(--bg-quaternary);
+            color: var(--text-primary);
+        }
+        
+        .match-popup-content {
+            padding: 20px;
+            padding-top: 16px;
+        }
+        
+        .match-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        
+        .match-stat-card {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            border: 1px solid var(--border-secondary);
+            transition: all 0.3s ease;
+        }
+        
+        .match-stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            letter-spacing: -0.29px;
+            word-break: break-word;
+            color: var(--text-primary);
+        }
+        
+        .match-stat-value.profit-positive {
+            color: var(--accent-primary);
+        }
+        
+        .match-stat-value.profit-negative {
+            color: var(--accent-red);
+        }
+        
+        .match-stat-label {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            font-weight: 500;
+            letter-spacing: -0.08px;
+        }
+        
+        .tickets-chart-container {
+            background: transparent;
+            border-radius: 0;
+            padding: 16px 0;
+            margin-bottom: 0;
+        }
+        
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+            letter-spacing: -0.24px;
+            text-align: center;
+        }
+        
+        .tickets-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px var(--shadow-primary);
+        }
+        
+        .tickets-table th {
+            background: var(--bg-tertiary);
+            padding: 10px 6px;
+            text-align: center;
+            font-weight: 600;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-secondary);
+            font-size: 11px;
+            letter-spacing: -0.08px;
+        }
+        
+        .tickets-table td {
+            padding: 8px 6px;
+            border-bottom: 1px solid var(--border-primary);
+            color: var(--text-secondary);
+            text-align: center;
+            font-size: 12px;
+            word-break: break-word;
+        }
+        
+        .tickets-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .tickets-table tr:hover {
+            background: var(--bg-tertiary);
+        }
+        
+        .status-sold {
+            color: var(--accent-red) !important;
+            font-weight: 600;
+        }
+        
+        .status-available {
+            color: var(--accent-primary) !important;
+            font-weight: 600;
+        }
+        
+        .match-loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-tertiary);
+            font-size: 17px;
+        }
+        
+        .match-loading-spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border-secondary);
+            border-top: 3px solid var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .clickable-match {
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        
+        .clickable-match:hover {
+            background: var(--bg-tertiary);
+        }
+        
+        .pdf-export-options {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .pdf-option-btn {
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-primary);
+            border-radius: 16px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: left;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .pdf-option-btn:hover {
+            border-color: var(--accent-primary);
+            background: var(--accent-green-bg);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px var(--accent-green-shadow);
+        }
+        
+        .pdf-option-btn span {
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--text-tertiary);
+        }
+        
+        .pdf-teams-section {
+            margin-top: 24px;
+        }
+        
+        .pdf-teams-section h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 16px;
+        }
+        
+        .pdf-team-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            width: 100%;
+            text-align: left;
+        }
+        
+        .pdf-team-btn:hover {
+            border-color: var(--accent-primary);
+            background: var(--bg-tertiary);
+        }
+        
+        .pdf-team-emoji {
+            font-size: 20px;
+        }
+        
+        .pdf-loading {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-tertiary);
+            font-size: 16px;
+        }
+        
+        .pdf-loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 3px solid var(--border-secondary);
+            border-top: 3px solid var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px auto;
+        }
+
+        .pdf-monthly-section {
+            margin-top: 24px;
+        }
+
+        .pdf-monthly-section h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 16px;
+        }
+
+        .month-selector {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .month-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-primary);
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        .month-btn:hover {
+            border-color: var(--accent-primary);
+            background: var(--bg-tertiary);
+        }
+
+        .month-btn.selected {
+            border-color: var(--accent-primary);
+            background: var(--accent-green-bg);
+            color: var(--accent-primary);
+            font-weight: 600;
+        }
+        
+        .install-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--accent-primary);
+            color: white;
+            padding: 16px;
+            text-align: center;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+            box-shadow: 0 -2px 10px var(--shadow-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            font-size: 15px;
+            font-weight: 500;
+        }
+        
+        .install-banner.show {
+            transform: translateY(0);
+        }
+        
+        .install-btn {
+            background: white;
+            color: var(--accent-primary);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 15px;
+            transition: all 0.2s ease;
+        }
+        
+        .install-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .install-btn:active {
+            transform: scale(0.98);
+        }
+        
+        .install-banner-close {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .offline-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: var(--accent-red);
+            color: white;
+            padding: 8px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 9999;
+            transform: translateY(-100%);
+            transition: transform 0.3s ease;
+        }
+        
+        .offline-indicator.show {
+            transform: translateY(0);
+        }
+        
+        @media (max-width: 767px) {
+            .container {
+                padding: 0 12px;
+            }
+            
+            .top-spacer {
+                height: 60px;
+            }
+            
+            .bottom-spacer {
+                height: 40px;
+            }
+            
+            .scrollable-content {
+                padding-top: 16px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+            
+            .stat-value {
+                font-size: 24px;
+            }
+            
+            .header h1 {
+                font-size: 26px;
+            }
+
+            .header {
+                margin-bottom: 0;
+                padding: 10px 0;
+            }
+            
+            .expand-btn, .refresh-btn {
+                min-height: 44px;
+            }
+            
+            .match-popup {
+                width: 95%;
+                max-width: 500px;
+                max-height: 85vh;
+                border-radius: 16px;
+            }
+
+            .theme-toggle {
+                top: 10px;
+                right: 0;
+            }
+
+            .month-selector {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (min-width: 768px) {
+            .container {
+                max-width: 768px;
+                margin: 0 auto;
+                padding: 0 24px;
+            }
+            
+            .bottom-spacer {
+                height: 60px;
+            }
+            
+            .scrollable-content {
+                padding-top: 20px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(4, 1fr);
+                gap: 16px;
+            }
+            
+            .header h1 {
+                font-size: 40px;
+            }
+            
+            .stat-value {
+                font-size: 32px;
+            }
+            
+            .match-popup {
+                width: 80%;
+                max-width: 700px;
+            }
+
+            .month-selector {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        
+        @media (min-width: 1024px) {
+            .container {
+                max-width: 1024px;
+                padding: 0 32px;
+            }
+            
+            .bottom-spacer {
+                height: 70px;
+            }
+            
+            .scrollable-content {
+                padding-top: 24px;
+            }
+            
+            .header h1 {
+                font-size: 48px;
+            }
+            
+            .match-popup {
+                width: 70%;
+                max-width: 800px;
+            }
+
+            .month-selector {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+        
+        @media print {
+            body {
+                background: white;
+                color: black;
+            }
+            
+            .refresh-btn, .expand-btn, .install-banner, .theme-toggle {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="top-spacer"></div>
+
+        <div id="offlineIndicator" class="offline-indicator">
+            🔵 You're offline - Data may be outdated
+        </div>
+
+        <div class="header">
+            <button class="gear-btn" onclick="openConfigModal()" aria-label="Settings" title="Settings">⚙️</button>
+            <h1>World Cup 2026</h1>
+            <div class="subtitle-row"><p>Ticket Dashboard</p></div>
+
+            <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+                <span class="theme-icon moon">🌙</span>
+                <span class="theme-icon sun">☀️</span>
+            </button>
+        </div>
+
+        <div class="sticky-header"></div>
+
+        <div class="scrollable-content">
+            <div id="needsConfig" class="needs-config" style="display:none;">
+                <h2>👋 Let's get connected</h2>
+                <p>Add your four Google Sheet IDs and API key to start pulling live data.</p>
+                <button class="refresh-btn" onclick="openConfigModal()">Open Settings</button>
+            </div>
+
+            <div id="mainContent" style="display:none;">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalTickets">0</div>
+                        <div class="stat-label">Total Tickets</div>
+                    </div>
+                    <div class="stat-card available-tickets">
+                        <div class="stat-value" id="remainingTickets">0</div>
+                        <div class="stat-label">Remaining</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalCost">£0</div>
+                        <div class="stat-label">Total Cost</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalSales">£0</div>
+                        <div class="stat-label">Total Sales</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="netProfit">£0</div>
+                        <div class="stat-label">Net Profit</div>
+                    </div>
+                </div>
+
+                <button class="refresh-btn" onclick="refreshDashboard()">Refresh Data</button>
+
+                <div id="loadingMessage" class="loading" style="display: none;">
+                    Loading latest data...
+                </div>
+
+                <div id="loadingProgress" style="display: none;">
+                    <div class="progress-container">
+                        <div class="progress-bar" id="progressBar"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">0%</div>
+                </div>
+
+                <div id="statusMessages"></div>
+
+                <div class="section" id="overviewSection">
+                    <div class="section-title">🌍 Regions</div>
+                    <div class="region-overview" id="regionOverview"></div>
+                </div>
+
+                <div class="section">
+                    <div class="filter-bar">
+                        <input type="text" class="search-box" id="searchBox" placeholder="🔎 Search team, city or match number…" oninput="applyFilters()">
+                        <div class="chip-row" id="regionChips"></div>
+                        <div class="chip-row" id="stageChips"></div>
+                    </div>
+                </div>
+
+                <div id="regionsContainer"></div>
+
+                <button class="pdf-export-btn" onclick="showPDFExportModal()">📄 Export PDF</button>
+            </div>
+        </div>
+
+        <div class="bottom-spacer"></div>
+
+        <div id="installBanner" class="install-banner">
+            <span>Add World Cup Tickets to your home screen!</span>
+            <button class="install-btn" onclick="installPWA()">Install</button>
+            <button class="install-banner-close" onclick="hideInstallBanner()">×</button>
+        </div>
+
+        <!-- Match detail popup -->
+        <div id="matchPopupOverlay" class="match-popup-overlay" onclick="closeMatchPopup(event)">
+            <div class="match-popup" onclick="event.stopPropagation()">
+                <div class="match-popup-header">
+                    <div>
+                        <div class="match-popup-title" id="popupMatchTitle">Loading...</div>
+                        <div class="match-popup-date" id="popupMatchDate"></div>
+                    </div>
+                    <button class="close-btn" onclick="closeMatchPopup()">×</button>
+                </div>
+                <div class="match-popup-content" id="matchPopupContent"></div>
+            </div>
+        </div>
+
+        <!-- PDF export modal -->
+        <div id="pdfExportModal" class="match-popup-overlay" onclick="closePDFExportModal(event)">
+            <div class="match-popup" onclick="event.stopPropagation()">
+                <div class="match-popup-header">
+                    <div>
+                        <div class="match-popup-title">📄 Export PDF Report</div>
+                        <div class="match-popup-date">Choose what to export</div>
+                    </div>
+                    <button class="close-btn" onclick="closePDFExportModal()">×</button>
+                </div>
+                <div class="match-popup-content" id="pdfExportContent">
+                    <div class="pdf-export-options">
+                        <button class="pdf-option-btn" onclick="exportAllDataPDF()">
+                            📊 Export All Regions Summary
+                            <span>Headline figures for every region and match</span>
+                        </button>
+                        <div class="pdf-teams-section">
+                            <h3>Export Individual Region:</h3>
+                            <div id="pdfRegionsList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Config modal -->
+        <div id="configModal" class="match-popup-overlay" onclick="closeConfigModal(event)">
+            <div class="match-popup" onclick="event.stopPropagation()">
+                <div class="match-popup-header">
+                    <div>
+                        <div class="match-popup-title">⚙️ Settings</div>
+                        <div class="match-popup-date">Google Sheets connection</div>
+                    </div>
+                    <button class="close-btn" onclick="closeConfigModal()">×</button>
+                </div>
+                <div class="match-popup-content">
+                    <div class="config-grid" id="configGrid"></div>
+                    <p class="config-hint" style="margin-top:14px;">
+                        Paste each region's Google Sheet ID (the long string in its URL between <code>/d/</code> and <code>/edit</code>).
+                        Each sheet must be shared as <b>"Anyone with the link – Viewer"</b>. Your API key needs the Google Sheets API enabled.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ---- Theme ---- */
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            const tc = document.querySelector('meta[name="theme-color"]');
+            if (tc) tc.content = theme === 'dark' ? '#181818' : '#FFFFFF';
+            const sb = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+            if (sb) sb.content = theme === 'dark' ? 'black-translucent' : 'default';
+        }
+        function toggleTheme() {
+            const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+            const next = cur === 'dark' ? 'light' : 'dark';
+            setTheme(next); localStorage.setItem('theme', next);
+        }
+        (function initTheme(){
+            const saved = localStorage.getItem('theme');
+            const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            setTheme(saved || (dark ? 'dark' : 'light'));
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => { if (!localStorage.getItem('theme')) setTheme(e.matches ? 'dark' : 'light'); });
+        })();
+
+        /* ---- Service worker ---- */
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', async () => {
+                try {
+                    const reg = await navigator.serviceWorker.register('sw.js');
+                    reg.addEventListener('updatefound', () => {
+                        const nw = reg.installing;
+                        nw.addEventListener('statechange', () => {
+                            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+                                if (confirm('New version available! Reload to update?')) { nw.postMessage({ type:'SKIP_WAITING' }); window.location.reload(); }
+                            }
+                        });
+                    });
+                } catch (e) { console.error('SW registration failed', e); }
+            });
+        }
+
+        /* ---- Online / offline ---- */
+        window.addEventListener('online', () => { document.getElementById('offlineIndicator').classList.remove('show'); if (isConfigured() && confirm("You're back online! Refresh data?")) refreshDashboard(); });
+        window.addEventListener('offline', () => document.getElementById('offlineIndicator').classList.add('show'));
+
+        /* ---- Install banner ---- */
+        let deferredPrompt;
+        const installBanner = document.getElementById('installBanner');
+        window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; if (!window.matchMedia('(display-mode: standalone)').matches && localStorage.getItem('installBannerDismissed') !== 'true') installBanner.classList.add('show'); });
+        function installPWA(){ if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt.userChoice.then(()=>{ deferredPrompt=null; hideInstallBanner(); }); } }
+        function hideInstallBanner(){ installBanner.classList.remove('show'); localStorage.setItem('installBannerDismissed','true'); }
+        window.addEventListener('appinstalled', hideInstallBanner);
+        /* ============================================================
+           CONFIG  — paste your IDs here OR use the ⚙️ Settings button
+           (Settings saves to this device; values below are the defaults)
+           ============================================================ */
+        const DEFAULT_REGIONS = [
+            { name: 'Central Region', emoji: '🌎', sheetId: '' },
+            { name: 'East Coast',     emoji: '🗽', sheetId: '' },
+            { name: 'Mexico',         emoji: '🇲🇽', sheetId: '' },
+            { name: 'Western Region', emoji: '🌅', sheetId: '' }
+        ];
+        const DEFAULT_API_KEY = '';
+
+        // Tabs that are never match tabs (templates / helpers).
+        const SKIP_TABS = ['NEW HOME TEMPLATE','EVALUATION','DROPDOWN OPTIONS','SCOTLAND TST','ENGLAND SUPPORTERS','HOME','TEMPLATE'];
+        const SECTION_LABELS = ['HOSPITALITY','CAT 1','CAT 2','CAT 3','CAT 4'];
+        const FETCH_RANGE = 'A1:AB600';
+
+        /* ---- Config persistence ---- */
+        function loadConfig() {
+            let regions = DEFAULT_REGIONS.map(r => ({ ...r }));
+            let apiKey = DEFAULT_API_KEY;
+            try {
+                const saved = JSON.parse(localStorage.getItem('wc_config') || 'null');
+                if (saved) {
+                    apiKey = saved.apiKey || apiKey;
+                    if (Array.isArray(saved.regions)) {
+                        regions = regions.map((r, i) => ({ ...r, sheetId: saved.regions[i]?.sheetId || r.sheetId }));
+                    }
+                }
+            } catch (e) {}
+            return { regions, apiKey };
+        }
+        function saveConfig() {
+            const regions = REGIONS.map((r, i) => ({ sheetId: document.getElementById('cfg-sheet-' + i).value.trim() }));
+            const apiKey = document.getElementById('cfg-apikey').value.trim();
+            localStorage.setItem('wc_config', JSON.stringify({ regions, apiKey }));
+            const cfg = loadConfig();
+            REGIONS = cfg.regions; API_KEY = cfg.apiKey;
+            closeConfigModal();
+            if (isConfigured()) { showOrHideConfig(); refreshDashboard(); }
+        }
+        function isConfigured() { return API_KEY && REGIONS.some(r => r.sheetId); }
+
+        let { regions: REGIONS, apiKey: API_KEY } = loadConfig();
+
+        function extractSheetId(input) {
+            if (!input) return '';
+            const m = input.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            return m ? m[1] : input.trim();
+        }
+
+        function renderConfigModal() {
+            const grid = document.getElementById('configGrid');
+            grid.innerHTML = REGIONS.map((r, i) => `
+                <div class="config-field">
+                    <label>${r.emoji} ${r.name} — Sheet ID</label>
+                    <input id="cfg-sheet-${i}" value="${r.sheetId || ''}" placeholder="1AbC…  (or paste the full URL)">
+                </div>
+            `).join('') + `
+                <div class="config-field">
+                    <label>🔑 Google API Key</label>
+                    <input id="cfg-apikey" value="${API_KEY || ''}" placeholder="AIza…">
+                </div>
+                <button class="config-save-btn" onclick="saveConfig()">Save & Load</button>
+            `;
+            // normalise any pasted URLs on blur
+            REGIONS.forEach((r, i) => {
+                const el = document.getElementById('cfg-sheet-' + i);
+                el.addEventListener('blur', () => { el.value = extractSheetId(el.value); });
+            });
+        }
+        function openConfigModal() { renderConfigModal(); document.getElementById('configModal').classList.add('show'); }
+        function closeConfigModal(e) { if (e && e.target.id !== 'configModal') return; document.getElementById('configModal').classList.remove('show'); }
+
+        function showOrHideConfig() {
+            const ok = isConfigured();
+            document.getElementById('needsConfig').style.display = ok ? 'none' : 'block';
+            document.getElementById('mainContent').style.display = ok ? 'block' : 'none';
+        }
+
+        /* ---- Formatting helpers ---- */
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 0 }).format(Math.abs(amount || 0));
+        }
+        function signedCurrency(v) { return (v >= 0 ? '+' : '-') + formatCurrency(v); }
+        function num(v) { if (typeof v === 'number') return v; if (v == null || v === '') return 0; const n = parseFloat(String(v).replace(/[£,\s]/g, '')); return isNaN(n) ? 0 : n; }
+
+        const UPPER = ['FC','AFC','USA','USNT','UK','US','NY','LA','SF','NZ','UAE','VAR','UEFA','FIFA','RO32','RO16','QTR','SEMI','FINAL'];
+        const LOWER = ['v','vs','versus','and','the','of','at','in','on','for'];
+        function formatSingleWord(w){ if(!w) return ''; const u=w.toUpperCase(), l=w.toLowerCase(); if(UPPER.includes(u)) return u; if(LOWER.includes(l)) return l; return w.charAt(0).toUpperCase()+w.slice(1).toLowerCase(); }
+        function formatName(name){ if(!name) return ''; return String(name).split(/\s+/).map(formatSingleWord).join(' '); }
+
+        /* ---- Match-tab name parser ---- */
+        function parseStage(title) {
+            const t = title.toUpperCase();
+            if (/\bSEMI\b/.test(t)) return { stage: 'Semi-Final', order: 5 };
+            if (/\bQTR\b|\bQUARTER\b/.test(t)) return { stage: 'Quarter-Final', order: 4 };
+            if (/RO16|R016/.test(t)) return { stage: 'Round of 16', order: 3 };
+            if (/RO32|R032/.test(t)) return { stage: 'Round of 32', order: 2 };
+            if (/3RD PLACE|THIRD PLACE/.test(t)) return { stage: 'Third Place', order: 6 };
+            if (/\bFINAL\b/.test(t)) return { stage: 'Final', order: 7 };
+            return { stage: 'Group Stage', order: 1 };
+        }
+        function parseMatchTitle(title) {
+            const { stage, order } = parseStage(title);
+            const noMatch = title.match(/M\s?(\d+)/i);
+            const matchNo = noMatch ? parseInt(noMatch[1], 10) : null;
+            const cityMatch = title.match(/\(([^)]*)\)?\s*$/);
+            const city = cityMatch ? cityMatch[1].trim() : '';
+            let teams = title.replace(/\s*\([^)]*\)?\s*$/, '');           // strip trailing (city)
+            teams = teams.replace(/^(RO32|RO16|R016|R032|QTR|SEMI)\s*/i, '');
+            teams = teams.replace(/^M\s?\d+\s*[-–—]?\s*/i, '').trim();      // strip leading M-number
+            teams = teams.replace(/^[-–—]\s*/, '').trim();
+            if (!teams || /^(FINAL|3RD PLACE|THIRD PLACE)$/i.test(teams)) teams = stage;
+            const display = formatName(teams);
+            return { matchNo, stage, stageOrder: order, city, display };
+        }
+
+        /* ---- Parse one match tab's value grid ---- */
+        function cell(values, r, c) { const row = values[r]; if (!row) return ''; const v = row[c]; return v == null ? '' : v; }
+        function isMatchTab(values) {
+            const a2  = String(cell(values, 1, 0)).trim().toUpperCase();
+            const f1  = String(cell(values, 0, 5)).trim().toUpperCase();
+            const i1  = String(cell(values, 0, 8)).trim().toUpperCase();
+            const a12 = String(cell(values, 11, 0)).trim().toUpperCase();
+            // tolerant: any one of the layout signatures is enough (one mistyped label won't drop a match)
+            return a2 === 'FACE VALUE' || (f1 === 'BUYER' && i1 === 'FV') || a12 === 'CAT';
+        }
+        function parseMatchTab(region, title, values) {
+            const summary = {
+                faceValue: num(cell(values,1,1)),
+                extraCosts: num(cell(values,2,1)),
+                commission: num(cell(values,3,1)),
+                totalCost: num(cell(values,4,1)),
+                sales: num(cell(values,5,1)),
+                profit: num(cell(values,6,1)),
+                tickets: num(cell(values,7,1)),
+                remaining: num(cell(values,8,1)),
+                needOrders: num(cell(values,9,1))
+            };
+            // Category breakdown (sheet rows 13-23 -> idx 12-22)
+            const cats = [];
+            for (let r = 12; r <= 22; r++) {
+                const nm = String(cell(values, r, 0)).trim();
+                if (!nm || nm.toUpperCase() === 'TOTAL') continue;
+                const bought = num(cell(values, r, 1)), rem = num(cell(values, r, 2)), pl = num(cell(values, r, 3));
+                if (bought || rem || pl) cats.push({ name: nm, bought, remaining: rem, pl });
+            }
+            // Ticket rows
+            const tickets = [];
+            let section = '';
+            for (let r = 1; r < values.length; r++) {
+                const q = String(cell(values, r, 16)).trim();
+                const fv = num(cell(values, r, 8));
+                if (q && SECTION_LABELS.includes(q.toUpperCase()) && fv === 0) { section = q; continue; }
+                if (fv <= 0) continue;
+                const price = num(cell(values, r, 18));
+                const listed = String(cell(values, r, 17)).trim();
+                let status = String(cell(values, r, 26)).trim();
+                if (!status) status = price > 0 ? 'Sold' : (listed ? 'Listed' : 'Available');
+                tickets.push({
+                    cat: String(cell(values, r, 12)).trim() || section,
+                    block: String(cell(values, r, 13)).trim(),
+                    row: String(cell(values, r, 14)).trim(),
+                    seat: String(cell(values, r, 15)).trim(),
+                    source: String(cell(values, r, 11)).trim(),
+                    name: String(cell(values, r, 10)).trim(),
+                    fv, price, net: num(cell(values, r, 25)),
+                    orderNo: String(cell(values, r, 19)).trim(),
+                    status
+                });
+            }
+            const meta = parseMatchTitle(title);
+            return { region: region.name, regionEmoji: region.emoji, tabTitle: title, ...meta, summary, cats, tickets };
+        }
+
+        /* ---- Fetch ---- */
+        let dashboardData = { regions: [], matches: [], totals: {} };
+        let matchById = {};
+
+        async function fetchJSON(url) {
+            const res = await fetch(url);
+            if (!res.ok) { let msg = res.status + ''; try { const j = await res.json(); msg = j.error?.message || msg; } catch(e){} throw new Error(msg); }
+            return res.json();
+        }
+        function rangeParam(title) { return encodeURIComponent("'" + title.replace(/'/g, "''") + "'!" + FETCH_RANGE); }
+
+        async function loadRegion(region) {
+            const id = region.sheetId;
+            const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties.title&key=${API_KEY}`;
+            const meta = await fetchJSON(metaUrl);
+            const titles = meta.sheets.map(s => s.properties.title)
+                .filter(t => !SKIP_TABS.includes(t.trim().toUpperCase()));
+            if (titles.length === 0) return [];
+            const ranges = titles.map(rangeParam).join('&ranges=');
+            const valuesUrl = `https://sheets.googleapis.com/v4/spreadsheets/${id}/values:batchGet?ranges=${ranges}&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING&key=${API_KEY}`;
+            const data = await fetchJSON(valuesUrl);
+            const out = [];
+            (data.valueRanges || []).forEach((vr, i) => {
+                const values = vr.values || [];
+                // only true match tabs are kept
+                if (!isMatchTab(values)) return;
+                out.push(parseMatchTab(region, titles[i], values));
+            });
+            return out;
+        }
+
+        async function refreshDashboard() {
+            if (!isConfigured()) { openConfigModal(); return; }
+            const loadingEl = document.getElementById('loadingMessage');
+            const progEl = document.getElementById('loadingProgress');
+            const bar = document.getElementById('progressBar');
+            const progText = document.getElementById('progressText');
+            const btn = document.querySelector('.refresh-btn');
+            loadingEl.style.display = 'block'; progEl.style.display = 'block';
+            if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+
+            const regions = []; const allMatches = []; const errors = [];
+            const active = REGIONS.filter(r => r.sheetId);
+            for (let i = 0; i < active.length; i++) {
+                const region = active[i];
+                const pct = Math.round(((i) / active.length) * 100);
+                bar.style.width = pct + '%'; progText.textContent = `${pct}% — ${region.name}`;
+                try {
+                    const matches = await loadRegion(region);
+                    const totals = matches.reduce((a, m) => ({
+                        tickets: a.tickets + m.summary.tickets,
+                        remaining: a.remaining + m.summary.remaining,
+                        cost: a.cost + m.summary.totalCost,
+                        sales: a.sales + m.summary.sales,
+                        profit: a.profit + m.summary.profit
+                    }), { tickets:0, remaining:0, cost:0, sales:0, profit:0 });
+                    regions.push({ ...region, matchCount: matches.length, totals });
+                    allMatches.push(...matches);
+                } catch (e) {
+                    errors.push({ name: region.name, reason: e.message });
+                    regions.push({ ...region, matchCount: 0, totals: { tickets:0, remaining:0, cost:0, sales:0, profit:0 }, error: e.message });
+                }
+            }
+            bar.style.width = '100%'; progText.textContent = '100%';
+
+            allMatches.forEach((m, i) => { m.id = 'm' + i; matchById[m.id] = m; });
+            const totals = allMatches.reduce((a, m) => ({
+                tickets: a.tickets + m.summary.tickets,
+                remaining: a.remaining + m.summary.remaining,
+                cost: a.cost + m.summary.totalCost,
+                sales: a.sales + m.summary.sales,
+                profit: a.profit + m.summary.profit
+            }), { tickets:0, remaining:0, cost:0, sales:0, profit:0 });
+
+            dashboardData = { regions, matches: allMatches, totals };
+            try { localStorage.setItem('wc_snapshot', JSON.stringify(dashboardData)); } catch(e){}
+
+            renderAll();
+
+            if (errors.length) {
+                const list = errors.map(e => `• ${e.name}: ${e.reason}`).join('<br>');
+                showStatusMessage(`⚠️ ${errors.length} region(s) failed to load:<br>${list}<br><br>Check the Sheet ID, sharing ("Anyone with link"), and API key. Tap to dismiss.`, 'error', true);
+            }
+            if (allMatches.length) showStatusMessage(`✅ Loaded ${allMatches.length} matches across ${regions.filter(r=>!r.error).length} regions.`, 'success');
+
+            loadingEl.style.display = 'none'; progEl.style.display = 'none';
+            if (btn) { btn.disabled = false; btn.textContent = 'Refresh Data'; }
+        }
+
+        /* ---- Status toasts ---- */
+        function showStatusMessage(message, type='success', persistent=false) {
+            const c = document.getElementById('statusMessages');
+            const id = 'status-' + Date.now() + Math.random().toString(36).slice(2,6);
+            const el = document.createElement('div');
+            el.id = id;
+            el.className = (type === 'error' ? 'error-message' : 'success-message') + (persistent ? ' persistent-message' : '');
+            el.innerHTML = message;
+            if (persistent) el.onclick = () => el.remove();
+            c.appendChild(el);
+            if (!persistent) setTimeout(() => el.remove(), 5000);
+        }
+
+        /* ---- Filters state ---- */
+        let filterRegion = 'All';
+        let filterStage = 'All';
+        const STAGE_ORDER = ['Group Stage','Round of 32','Round of 16','Quarter-Final','Semi-Final','Third Place','Final'];
+
+        function renderAll() {
+            renderKPIs();
+            renderRegionOverview();
+            renderChips();
+            renderRegions();
+        }
+
+        function renderKPIs() {
+            const t = dashboardData.totals;
+            document.getElementById('totalTickets').textContent = t.tickets || 0;
+            document.getElementById('remainingTickets').textContent = t.remaining || 0;
+            document.getElementById('totalCost').textContent = formatCurrency(t.cost);
+            document.getElementById('totalSales').textContent = formatCurrency(t.sales);
+            const p = document.getElementById('netProfit');
+            p.textContent = signedCurrency(t.profit || 0);
+            p.className = 'stat-value ' + ((t.profit || 0) >= 0 ? 'profit-positive' : 'profit-negative');
+        }
+
+        function renderRegionOverview() {
+            const wrap = document.getElementById('regionOverview');
+            wrap.innerHTML = dashboardData.regions.map(r => `
+                <div class="region-mini" onclick="filterToRegion('${r.name.replace(/'/g,"\\'")}')">
+                    <div class="rm-name">${r.emoji} ${r.name}</div>
+                    <div class="rm-stat"><span>Matches</span><b>${r.matchCount}</b></div>
+                    <div class="rm-stat"><span>Tickets</span><b>${r.totals.tickets} (${r.totals.remaining} left)</b></div>
+                    <div class="rm-stat"><span>Sales</span><b>${formatCurrency(r.totals.sales)}</b></div>
+                    <div class="rm-stat"><span>Profit</span><b class="${r.totals.profit>=0?'profit-positive':'profit-negative'}">${signedCurrency(r.totals.profit)}</b></div>
+                </div>`).join('');
+        }
+
+        function renderChips() {
+            const regions = ['All', ...dashboardData.regions.map(r => r.name)];
+            document.getElementById('regionChips').innerHTML = regions.map(r =>
+                `<div class="chip ${filterRegion===r?'active':''}" onclick="setRegionFilter('${r.replace(/'/g,"\\'")}')">${r}</div>`).join('');
+            const stagesPresent = STAGE_ORDER.filter(s => dashboardData.matches.some(m => m.stage === s));
+            const stages = ['All', ...stagesPresent];
+            document.getElementById('stageChips').innerHTML = stages.map(s =>
+                `<div class="chip ${filterStage===s?'active':''}" onclick="setStageFilter('${s}')">${s}</div>`).join('');
+        }
+        function setRegionFilter(r){ filterRegion=r; renderChips(); renderRegions(); }
+        function setStageFilter(s){ filterStage=s; renderChips(); renderRegions(); }
+        function filterToRegion(r){ filterRegion=r; document.getElementById('regionsContainer').scrollIntoView({behavior:'smooth'}); renderChips(); renderRegions(); }
+        function applyFilters(){ renderRegions(); }
+
+        function matchPassesSearch(m, q) {
+            if (!q) return true;
+            const hay = `${m.display} ${m.city} ${m.tabTitle} ${m.matchNo||''} M${m.matchNo||''}`.toLowerCase();
+            return hay.includes(q);
+        }
+
+        function renderRegions() {
+            const q = (document.getElementById('searchBox').value || '').trim().toLowerCase();
+            const container = document.getElementById('regionsContainer');
+            const regionsToShow = dashboardData.regions.filter(r => filterRegion === 'All' || r.name === filterRegion);
+            let html = '';
+            regionsToShow.forEach((region, ri) => {
+                let matches = dashboardData.matches.filter(m => m.region === region.name);
+                if (filterStage !== 'All') matches = matches.filter(m => m.stage === filterStage);
+                matches = matches.filter(m => matchPassesSearch(m, q));
+                if (matches.length === 0) return;
+
+                const byStage = {};
+                matches.forEach(m => { (byStage[m.stage] = byStage[m.stage] || []).push(m); });
+
+                const stagesHtml = STAGE_ORDER.filter(s => byStage[s]).map(stage => {
+                    const list = byStage[stage].sort((a,b) => (a.matchNo||9999) - (b.matchNo||9999));
+                    const cards = list.map(m => {
+                        const s = m.summary, sold = s.tickets - s.remaining;
+                        return `
+                        <div class="match-item clickable-match" onclick="openMatchPopup('${m.id}')">
+                            <div class="match-header">
+                                <div class="match-info">
+                                    <div class="match-details-info">
+                                        <h3>${m.display}</h3>
+                                        <div class="match-meta">
+                                            ${m.matchNo?`<span class="match-stage-tag">M${m.matchNo}</span>`:''}
+                                            ${m.city?`<span class="match-city">📍 ${m.city}</span>`:''}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="tickets-status">
+                                    <div class="tickets-count">${s.remaining}/${s.tickets}</div>
+                                    <div class="tickets-label">left</div>
+                                </div>
+                            </div>
+                            <div class="match-details">
+                                <div class="detail-item"><div class="detail-label">Sold</div><div class="detail-value">${sold}</div></div>
+                                <div class="detail-item"><div class="detail-label">Cost</div><div class="detail-value">${formatCurrency(s.totalCost)}</div></div>
+                                <div class="detail-item"><div class="detail-label">Sales</div><div class="detail-value">${formatCurrency(s.sales)}</div></div>
+                                <div class="detail-item"><div class="detail-label">Profit</div><div class="detail-value ${s.profit>=0?'profit-positive':'profit-negative'}">${signedCurrency(s.profit)}</div></div>
+                            </div>
+                        </div>`;
+                    }).join('');
+                    return `<div class="stage-group"><div class="stage-label">${stage} <span class="stage-count">(${list.length})</span></div>${cards}</div>`;
+                }).join('');
+
+                const idx = 'r' + ri;
+                html += `
+                <div class="section">
+                    <div class="team-header">
+                        <div class="team-name"><div class="team-emoji">${region.emoji}</div><span>${region.name}</span></div>
+                        <div class="team-summary">
+                            <div class="team-tickets">${region.totals.tickets} tickets</div>
+                            <div class="team-spent">${formatCurrency(region.totals.cost)} cost</div>
+                            <div class="team-profit ${region.totals.profit>=0?'profit-positive':'profit-negative'}">${signedCurrency(region.totals.profit)}</div>
+                        </div>
+                    </div>
+                    <button class="expand-btn" onclick="toggleRegion('${idx}')"><span id="expand-text-${idx}">Show Matches (${matches.length})</span></button>
+                    <div class="team-details ${(filterRegion!=='All'||filterStage!=='All'||q)?'':'collapsed'}" id="details-${idx}">${stagesHtml}</div>
+                </div>`;
+            });
+            container.innerHTML = html || `<div class="empty-state">No matches match your filters.</div>`;
+        }
+
+        function toggleRegion(idx) {
+            const d = document.getElementById('details-' + idx);
+            const t = document.getElementById('expand-text-' + idx);
+            const btn = t.closest('.expand-btn');
+            if (d.classList.contains('collapsed')) { d.classList.remove('collapsed'); t.textContent = t.textContent.replace('Show','Hide'); btn.classList.add('hide-matches'); }
+            else { d.classList.add('collapsed'); t.textContent = t.textContent.replace('Hide','Show'); btn.classList.remove('hide-matches'); }
+        }
+
+        /* ---- Match popup ---- */
+        function openMatchPopup(id) {
+            const m = matchById[id];
+            if (!m) return;
+            document.getElementById('popupMatchTitle').textContent = m.display;
+            document.getElementById('popupMatchDate').textContent =
+                [m.matchNo?('Match '+m.matchNo):'', m.stage, m.city].filter(Boolean).join('  ·  ');
+            const s = m.summary, sold = s.tickets - s.remaining;
+            const content = document.getElementById('matchPopupContent');
+
+            const statPills = `
+                <div class="match-stats-grid">
+                    <div class="match-stat-card"><div class="match-stat-value">${s.tickets}</div><div class="match-stat-label">Tickets</div></div>
+                    <div class="match-stat-card"><div class="match-stat-value">${sold}</div><div class="match-stat-label">Sold</div></div>
+                    <div class="match-stat-card"><div class="match-stat-value">${s.remaining}</div><div class="match-stat-label">Remaining</div></div>
+                    <div class="match-stat-card"><div class="match-stat-value ${s.profit>=0?'profit-positive':'profit-negative'}">${signedCurrency(s.profit)}</div><div class="match-stat-label">Profit</div></div>
+                </div>
+                <div class="match-stats-grid" style="margin-top:8px;">
+                    <div class="match-stat-card"><div class="match-stat-value">${formatCurrency(s.faceValue)}</div><div class="match-stat-label">Face Value</div></div>
+                    <div class="match-stat-card"><div class="match-stat-value">${formatCurrency(s.totalCost)}</div><div class="match-stat-label">Total Cost</div></div>
+                    <div class="match-stat-card"><div class="match-stat-value">${formatCurrency(s.sales)}</div><div class="match-stat-label">Sales</div></div>
+                    <div class="match-stat-card"><div class="match-stat-value">${s.needOrders||0}</div><div class="match-stat-label">Need Orders</div></div>
+                </div>`;
+
+            const catRows = m.cats.length ? m.cats.map(c => `
+                <tr class="${(c.bought||c.remaining)?'':'zero-row'}">
+                    <td>${c.name}</td><td>${c.bought}</td><td>${c.remaining}</td>
+                    <td class="${c.pl>=0?'profit-positive':'profit-negative'}">${signedCurrency(c.pl)}</td>
+                </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;opacity:.6;">No category breakdown</td></tr>`;
+            const catTable = `
+                <div class="popup-section-title">Category breakdown</div>
+                <table class="cat-table">
+                    <thead><tr><th>Category</th><th>Bought</th><th>Left</th><th>P/L</th></tr></thead>
+                    <tbody>${catRows}</tbody>
+                </table>`;
+
+            const ticketRows = m.tickets.length ? m.tickets.map(t => {
+                const seat = [t.block, t.row, t.seat].filter(Boolean).join('-');
+                const pillClass = t.status.toLowerCase().includes('sold') ? 'sold' : (t.status.toLowerCase().includes('list') ? 'listed' : 'available');
+                return `<tr>
+                    <td style="text-align:left;">${t.cat || '—'}${seat?`<br><span style="opacity:.6;font-size:11px;">${seat}</span>`:''}</td>
+                    <td>${formatCurrency(t.fv)}</td>
+                    <td>${t.price?formatCurrency(t.price):'—'}</td>
+                    <td class="${t.net>=0?'profit-positive':'profit-negative'}">${t.net?signedCurrency(t.net):'—'}</td>
+                    <td><span class="pill ${pillClass}">${t.status}</span></td>
+                </tr>`;
+            }).join('') : `<tr><td colspan="5" style="text-align:center;opacity:.6;">No individual tickets listed</td></tr>`;
+            const ticketTable = `
+                <div class="popup-section-title">Tickets (${m.tickets.length})</div>
+                <table class="tickets-table">
+                    <thead><tr><th>Cat / Seat</th><th>FV</th><th>Price</th><th>Net</th><th>Status</th></tr></thead>
+                    <tbody>${ticketRows}</tbody>
+                </table>`;
+
+            content.innerHTML = statPills + catTable + ticketTable;
+            document.getElementById('matchPopupOverlay').classList.add('show');
+        }
+        function closeMatchPopup(e) { if (e && e.target && e.target.id !== 'matchPopupOverlay') return; document.getElementById('matchPopupOverlay').classList.remove('show'); }
+
+        /* ---- PDF export ---- */
+        function showPDFExportModal() {
+            document.getElementById('pdfRegionsList').innerHTML = dashboardData.regions.map((r, i) =>
+                `<button class="pdf-team-btn" onclick="exportRegionPDF(${i})"><span class="pdf-team-emoji">${r.emoji}</span>${r.name}</button>`).join('');
+            document.getElementById('pdfExportModal').classList.add('show');
+        }
+        function closePDFExportModal(e) { if (e && e.target.id !== 'pdfExportModal') return; document.getElementById('pdfExportModal').classList.remove('show'); }
+
+        function buildMatchTableBody(matches) {
+            return matches.sort((a,b)=>(a.stageOrder-b.stageOrder)||((a.matchNo||9999)-(b.matchNo||9999)))
+                .map(m => [ m.matchNo?('M'+m.matchNo):'', m.display, m.stage, m.summary.tickets, m.summary.remaining,
+                    formatCurrency(m.summary.totalCost), formatCurrency(m.summary.sales), signedCurrency(m.summary.profit) ]);
+        }
+        function exportAllDataPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.setFontSize(18); doc.text('World Cup 2026 — Ticket Summary', 14, 18);
+            doc.setFontSize(10); doc.setTextColor(120);
+            doc.text(new Date().toLocaleString('en-GB'), 14, 25);
+            const t = dashboardData.totals;
+            doc.autoTable({ startY: 30, theme:'plain', styles:{fontSize:10},
+                body:[['Total tickets', t.tickets, 'Remaining', t.remaining],
+                      ['Total cost', formatCurrency(t.cost), 'Total sales', formatCurrency(t.sales)],
+                      ['Net profit', signedCurrency(t.profit), '', '']] });
+            dashboardData.regions.forEach(r => {
+                const matches = dashboardData.matches.filter(m => m.region === r.name);
+                if (!matches.length) return;
+                doc.autoTable({
+                    startY: doc.lastAutoTable.finalY + 8,
+                    head: [[`${r.name}`, 'Stage', 'Tk', 'Left', 'Cost', 'Sales', 'Profit']],
+                    body: buildMatchTableBody(matches).map(row => [row[1], row[2], row[3], row[4], row[5], row[6], row[7]]),
+                    styles:{fontSize:8}, headStyles:{fillColor:[16,163,127]}
+                });
+            });
+            doc.save('WorldCup2026_All_Regions.pdf');
+            closePDFExportModal();
+        }
+        function exportRegionPDF(i) {
+            const { jsPDF } = window.jspdf;
+            const r = dashboardData.regions[i];
+            const matches = dashboardData.matches.filter(m => m.region === r.name);
+            const doc = new jsPDF();
+            doc.setFontSize(18); doc.text(`${r.name} — World Cup 2026`, 14, 18);
+            doc.setFontSize(10); doc.setTextColor(120); doc.text(new Date().toLocaleString('en-GB'), 14, 25);
+            doc.autoTable({ startY:30, theme:'plain', styles:{fontSize:10},
+                body:[['Tickets', r.totals.tickets, 'Remaining', r.totals.remaining],
+                      ['Cost', formatCurrency(r.totals.cost), 'Sales', formatCurrency(r.totals.sales)],
+                      ['Profit', signedCurrency(r.totals.profit), '', '']] });
+            doc.autoTable({ startY: doc.lastAutoTable.finalY + 8,
+                head:[['Match','Fixture','Stage','Tk','Left','Cost','Sales','Profit']],
+                body: buildMatchTableBody(matches),
+                styles:{fontSize:8}, headStyles:{fillColor:[16,163,127]} });
+            doc.save(`WorldCup2026_${r.name.replace(/\s+/g,'_')}.pdf`);
+            closePDFExportModal();
+        }
+
+        /* ---- Boot ---- */
+        document.addEventListener('DOMContentLoaded', () => {
+            showOrHideConfig();
+            if (isConfigured()) {
+                if (navigator.onLine) { refreshDashboard(); }
+                else {
+                    document.getElementById('offlineIndicator').classList.add('show');
+                    try { const snap = JSON.parse(localStorage.getItem('wc_snapshot')||'null'); if (snap) { dashboardData = snap; dashboardData.matches.forEach((m,i)=>{m.id='m'+i;matchById[m.id]=m;}); renderAll(); } } catch(e){}
+                }
+            }
+        });
+
+    </script>
+</body>
+</html>
