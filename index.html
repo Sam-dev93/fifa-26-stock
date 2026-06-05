@@ -1782,12 +1782,15 @@
             }
             window.addEventListener('load', async () => {
                 try {
-                    const reg = await navigator.serviceWorker.register('sw.js');
-                    // Check for a new sw.js periodically and whenever the tab regains focus
-                    setInterval(() => reg.update(), 30 * 60 * 1000);
+                    // updateViaCache:'none' → the browser always re-fetches sw.js when checking
+                    // for updates, instead of trusting an HTTP-cached copy (can be stale up to 24h).
+                    const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+                    reg.update();                                   // check right away
+                    setInterval(() => reg.update(), 15 * 60 * 1000); // and every 15 min
                     document.addEventListener('visibilitychange', () => {
                         if (document.visibilityState === 'visible') reg.update();
                     });
+                    window.addEventListener('online', () => reg.update());
                     // If an updated worker is already waiting, activate it immediately
                     if (reg.waiting && navigator.serviceWorker.controller) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
                     reg.addEventListener('updatefound', () => {
@@ -1926,8 +1929,9 @@
                 const bought = num(cell(values, r, 1)), rem = num(cell(values, r, 2)), pl = num(cell(values, r, 3));
                 if (bought || rem || pl) cats.push({ name: nm, bought, remaining: rem, pl });
             }
-            // Ticket rows — block/row/area AND the Listed flag are merged per group in the sheet
-            // (value only on the first row), so carry them down and reset on a new group.
+            // Ticket rows. Block / Row / Listed are merged per listing (value only on the first row),
+            // so carry them down. A new pack starts whenever the Block OR the Row actually changes
+            // (Block and Row are merged separately, so a row can change inside a wider block merge).
             const tickets = [];
             let section = '', cArea = '', cBlock = '', cRow = '', cListed = '', groupFv = null, gid = 0;
             for (let r = 1; r < values.length; r++) {
@@ -1939,9 +1943,14 @@
                 const bRaw = String(cell(values, r, 13)).trim();
                 const rRaw = String(cell(values, r, 14)).trim();
                 const lRaw = String(cell(values, r, 17)).trim();
-                if (bRaw) { cBlock = bRaw; cRow = rRaw; cListed = lRaw; groupFv = fv; gid++; }       // new seated group
-                else if (fv !== groupFv) { cBlock = ''; cRow = ''; cListed = lRaw; groupFv = fv; gid++; } // new price group
-                else if (lRaw) { cListed = lRaw; }                                                  // listed value appeared mid-group
+                let newGroup = false;
+                if (bRaw) { cBlock = bRaw; cListed = lRaw; groupFv = fv; newGroup = true; } // new block listing → re-read listed
+                if (rRaw) { cRow = rRaw; newGroup = true; }                                  // new row (even inside a wider block merge)
+                if (!bRaw && !rRaw) {
+                    if (lRaw) cListed = lRaw;                                                // listed value appears mid-merge
+                    if (!cBlock && !cRow && fv !== groupFv) { groupFv = fv; newGroup = true; } // unseated bulk → group by price
+                }
+                if (newGroup) gid++;
                 const seat = String(cell(values, r, 15)).trim();
                 const price = num(cell(values, r, 18));
                 let status = String(cell(values, r, 26)).trim();
@@ -2281,12 +2290,16 @@
                 const newGroup = t.gid !== prevGid;
                 if (newGroup) { band = !band; prevGid = t.gid; }
                 const cls = [band ? 'band' : '', (newGroup && i > 0) ? 'group-start' : ''].filter(Boolean).join(' ');
-                const netClass = t.net ? (t.net > 0 ? 'profit-positive' : 'profit-negative') : '';
+                // Profit is only real once it's actually sold for a price. No "Sold For" → no profit.
+                const sold = t.price > 0;
+                const soldFor = sold ? formatCurrency(t.price) : '—';
+                const profitTxt = sold ? signedCurrency(t.net) : '—';
+                const netClass = sold ? (t.net > 0 ? 'profit-positive' : (t.net < 0 ? 'profit-negative' : '')) : '';
                 return `<tr class="${cls}">
                     <td style="text-align:left;">${t.cat || '—'}${seat?`<br><span class="sub">${seat}</span>`:''}</td>
                     <td>${formatCurrency(t.fv)}</td>
-                    <td>${t.price?formatCurrency(t.price):'—'}</td>
-                    <td class="${netClass}">${t.net?signedCurrency(t.net):'—'}</td>
+                    <td>${soldFor}</td>
+                    <td class="${netClass}">${profitTxt}</td>
                     <td><span class="pill ${pillClass}">${t.status}</span></td>
                 </tr>`;
             }).join('') : `<tr><td colspan="5" style="text-align:center;opacity:.6;">No individual tickets listed</td></tr>`;
@@ -2298,7 +2311,7 @@
                 </button>
                 <div class="seats-wrap">
                     <table class="tickets-table">
-                        <thead><tr><th>Cat / Seat</th><th>FV</th><th>Price</th><th>Profit</th><th>Status</th></tr></thead>
+                        <thead><tr><th>Cat / Seat</th><th>FV</th><th>Sold For</th><th>Profit</th><th>Status</th></tr></thead>
                         <tbody>${ticketRows}</tbody>
                     </table>
                 </div>` : '';
