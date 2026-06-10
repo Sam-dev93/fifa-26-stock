@@ -1714,6 +1714,10 @@
                             🎯 Need List
                             <span>Filter by stage, then PDF / CSV / WhatsApp</span>
                         </button>
+                        <button class="pdf-option-btn" onclick="openAvailStock()">
+                            📦 Available Stock
+                            <span>Choose match, then PDF / CSV / WhatsApp</span>
+                        </button>
                         <button class="pdf-option-btn" onclick="exportAllDataPDF()">
                             📊 Export All Regions Summary
                             <span>Headline figures for every region and match</span>
@@ -1747,6 +1751,33 @@
                         <button class="pdf-option-btn" onclick="exportNeedPDF()">🎯 PDF<span>Summary, by category, then full detail</span></button>
                         <button class="pdf-option-btn" onclick="exportNeedCSV()">🧾 CSV<span>Open in Sheets / Excel</span></button>
                         <button class="pdf-option-btn" onclick="copyNeedList()">💬 Copy for WhatsApp<span>Plain text, ready to paste</span></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Available Stock export (match picker → format) -->
+        <div id="availStockModal" class="match-popup-overlay" onclick="closeAvailStock(event)">
+            <div class="match-popup" onclick="event.stopPropagation()">
+                <div class="match-popup-header">
+                    <div>
+                        <div class="match-popup-title">📦 Available Stock</div>
+                        <div class="match-popup-date">Choose a match, then a format</div>
+                    </div>
+                    <button class="close-btn" onclick="closeAvailStock()">×</button>
+                </div>
+                <div class="match-popup-content">
+                    <div class="filter-group" style="margin-bottom:16px;">
+                        <div class="filter-group-label">Match</div>
+                        <select id="availMatchSel" onchange="renderAvailPreview()"
+                            style="width:100%;padding:12px 14px;border-radius:14px;border:1px solid var(--border-primary);background:var(--bg-secondary);color:var(--text-primary);font-size:15px;font-weight:600;">
+                        </select>
+                    </div>
+                    <div id="availPreview" class="pack-mix" style="margin-bottom:16px;"></div>
+                    <div class="pdf-export-options">
+                        <button class="pdf-option-btn" onclick="exportAvailPDF()">📦 PDF<span>By category, then seat detail</span></button>
+                        <button class="pdf-option-btn" onclick="exportAvailCSV()">🧾 CSV<span>Open in Sheets / Excel</span></button>
+                        <button class="pdf-option-btn" onclick="copyAvailList()">💬 Copy for WhatsApp<span>Plain text, ready to paste</span></button>
                     </div>
                 </div>
             </div>
@@ -2523,6 +2554,139 @@
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(text).then(ok).catch(fallback);
             } else { fallback(); }
+        }
+
+        /* ---- Available Stock export ---- */
+        function availTickets(m) { return (m.tickets || []).filter(t => !/sold/i.test(t.status)); }
+        function openAvailStock() {
+            closePDFExportModal();
+            const sel = document.getElementById('availMatchSel');
+            const withStock = dashboardData.matches
+                .map((m, i) => ({ m, i, avail: availTickets(m).length }))
+                .filter(x => x.avail > 0)
+                .sort((a, b) => (a.m.matchNo || 9999) - (b.m.matchNo || 9999));
+            sel.innerHTML = '<option value="ALL">All matches</option>' +
+                withStock.map(x => `<option value="${x.i}">${matchAbbr(x.m)} — ${x.avail} available</option>`).join('');
+            document.getElementById('availStockModal').classList.add('show');
+            renderAvailPreview();
+        }
+        function closeAvailStock(e) { if (e && e.target && e.target.id !== 'availStockModal') return; document.getElementById('availStockModal').classList.remove('show'); }
+        function collectAvail() {
+            const v = document.getElementById('availMatchSel').value;
+            const matches = v === 'ALL' ? dashboardData.matches : [dashboardData.matches[Number(v)]];
+            const out = [];
+            matches.forEach(m => {
+                if (!m) return;
+                const av = availTickets(m);
+                if (!av.length) return;
+                const byCat = {}, order = [];
+                av.forEach(t => {
+                    const cat = normCat(t.cat) || '(no area)';
+                    if (!byCat[cat]) { byCat[cat] = { cat, qty: 0, tickets: [] }; order.push(cat); }
+                    byCat[cat].qty++; byCat[cat].tickets.push(t);
+                });
+                order.sort();
+                out.push({ match: m, header: matchAbbr(m), total: av.length, lines: order.map(k => byCat[k]) });
+            });
+            out.sort((a, b) => (a.match.matchNo || 9999) - (b.match.matchNo || 9999));
+            return out;
+        }
+        function renderAvailPreview() {
+            const groups = collectAvail();
+            const t = groups.reduce((a, g) => a + g.total, 0);
+            document.getElementById('availPreview').innerHTML = t
+                ? `<span class="pack-mix-label">Exporting</span> <span class="pack-tag">${groups.length} match${groups.length === 1 ? '' : 'es'}</span> <span class="pack-tag">${t} ticket${t === 1 ? '' : 's'}</span>`
+                : `<span class="pack-tag">No available tickets</span>`;
+        }
+        function buildAvailText() {
+            const groups = collectAvail();
+            if (!groups.length) return 'Available Stock\n\nNothing available 🎉';
+            const t = groups.reduce((a, g) => a + g.total, 0);
+            let txt = `Available Stock · ${t} ticket${t === 1 ? '' : 's'}\n`;
+            groups.forEach(g => {
+                txt += `\n${g.header}\n`;
+                g.lines.forEach(l => { txt += `${l.qty} x ${l.cat}\n`; });
+            });
+            return txt.trim();
+        }
+        function copyAvailList() {
+            const text = buildAvailText();
+            const ok = () => { showStatusMessage('Copied — paste into WhatsApp ✅', 'success'); closeAvailStock(); };
+            const fallback = () => {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text; ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.left = '0'; ta.style.opacity = '0';
+                    document.body.appendChild(ta); ta.focus(); ta.select();
+                    const done = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    if (done) ok(); else window.prompt('Copy this list:', text);
+                } catch (e) { window.prompt('Copy this list:', text); }
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(ok).catch(fallback);
+            } else { fallback(); }
+        }
+        function exportAvailCSV() {
+            const groups = collectAvail();
+            const rows = [['Region', 'Match', 'Fixture', 'Category', 'Block', 'Row', 'Seat', 'Listed On', 'Face Value']];
+            groups.forEach(g => g.lines.forEach(l => l.tickets.forEach(t =>
+                rows.push([g.match.region, 'M' + (g.match.matchNo || ''), g.match.display, l.cat,
+                    t.block || '', t.row || '', t.seat || '', t.listedOn || '', (t.fv || 0).toFixed(2)]))));
+            const tot = groups.reduce((a, g) => a + g.total, 0);
+            if (tot) { rows.push([]); rows.push(['', '', '', 'TOTAL AVAILABLE', tot, '', '', '', '']); }
+            const csv = rows.map(r => r.map(c => {
+                const s = String(c == null ? '' : c);
+                return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+            }).join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'available-stock.csv'; a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            closeAvailStock();
+        }
+        function exportAvailPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const groups = collectAvail();
+            doc.setFontSize(20); doc.setFont(undefined, 'bold'); doc.setTextColor(20);
+            doc.text('Available Stock', 14, 20);
+            doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.setTextColor(120);
+            doc.text('FIFA 26 Stock  ·  ' + new Date().toLocaleString('en-GB'), 14, 27);
+            doc.setTextColor(20);
+            if (!groups.length) {
+                doc.setFontSize(13); doc.text('No available tickets.', 14, 42);
+                doc.save('available-stock.pdf'); closeAvailStock(); return;
+            }
+            const tot = groups.reduce((a, g) => a + g.total, 0);
+            doc.setFontSize(13); doc.setFont(undefined, 'bold');
+            doc.text(`${tot} ticket${tot === 1 ? '' : 's'} available across ${groups.length} match${groups.length === 1 ? '' : 'es'}`, 14, 39);
+            doc.setFont(undefined, 'normal');
+            // by category (qty x cat per match)
+            const catRows = [];
+            groups.forEach(g => g.lines.forEach(l => catRows.push([g.header, l.cat, l.qty])));
+            catRows.push([{ content: 'Total', styles: { fontStyle: 'bold' } }, '', { content: tot, styles: { fontStyle: 'bold' } }]);
+            doc.autoTable({
+                startY: 45,
+                head: [['Match', 'Category', 'Available']],
+                body: catRows,
+                styles: { fontSize: 10, cellPadding: 3 },
+                headStyles: { fillColor: [26, 164, 124], halign: 'left' },
+                columnStyles: { 2: { halign: 'right' } }
+            });
+            // seat-level detail
+            const detail = [];
+            groups.forEach(g => g.lines.forEach(l => l.tickets.forEach(t =>
+                detail.push([g.header, l.cat, t.block || '', t.row || '', t.seat || '', t.listedOn || '']))));
+            doc.autoTable({
+                startY: doc.lastAutoTable.finalY + 9,
+                head: [['Match', 'Category', 'Block', 'Row', 'Seat', 'Listed On']],
+                body: detail,
+                styles: { fontSize: 9, cellPadding: 2.5 },
+                headStyles: { fillColor: [26, 164, 124] }
+            });
+            doc.save('available-stock.pdf');
+            closeAvailStock();
         }
 
         function buildMatchTableBody(matches) {
